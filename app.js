@@ -1,6 +1,6 @@
 import {
   OOB, randomString, pkceChallenge, normalizeHost,
-  sanitizeHtml, emojiFragment, safeUrl, timeAgo, h, svgIcon,
+  sanitizeHtml, emojiFragment, safeUrl, timeAgo, h, svgIcon, sparkline,
 } from './lib.js';
 
 const APP_NAME = 'Paquiderme';
@@ -24,11 +24,24 @@ const store = {
 };
 
 let session = null; // { host, token, account }
-const state = {
+
+const mkList = () => ({ items: [], more: true, loading: false, error: null });
+const mkState = () => ({
   tab: 'home',
-  home: { items: [], more: true, loading: false, error: null },
-  notifications: { items: [], more: true, loading: false, error: null },
-};
+  home: mkList(),
+  notifications: mkList(),
+  local: mkList(),
+  global: mkList(),
+  other: mkList(),
+  tag: mkList(),
+  trends: { tags: [], statuses: [], loading: false, error: null, loaded: false },
+  explore: {
+    seg: store.get('seg', 'local'),
+    tag: null,
+    otherHost: store.get('otherHost', ''),
+  },
+});
+let state = mkState();
 
 /* ---------- Avisos ---------- */
 
@@ -173,17 +186,20 @@ async function logout({ revoke = true, message = '' } = {}) {
   }
   store.del('session');
   session = null;
-  state.home = { items: [], more: true, loading: false, error: null };
-  state.notifications = { items: [], more: true, loading: false, error: null };
+  state = mkState();
   showLogin(message);
 }
 
 /* ---------- API ---------- */
 
-async function api(path, { method = 'GET', params, body, headers = {} } = {}) {
-  const url = new URL(path, `https://${session.host}`);
+async function api(path, { method = 'GET', params, body, headers = {}, host, auth = true } = {}) {
+  const target = host || session.host;
+  // o token nunca sai da instância do usuário
+  if (auth && target !== session.host) throw new Error('Requisição autenticada para outra instância bloqueada.');
+  const url = new URL(path, `https://${target}`);
   if (params) for (const [k, v] of Object.entries(params)) if (v != null) url.searchParams.set(k, v);
-  const init = { method, headers: { Authorization: `Bearer ${session.token}`, ...headers } };
+  const init = { method, headers: { ...headers } };
+  if (auth) init.headers.Authorization = `Bearer ${session.token}`;
   if (body) {
     init.headers['Content-Type'] = 'application/json';
     init.body = JSON.stringify(body);
@@ -192,14 +208,20 @@ async function api(path, { method = 'GET', params, body, headers = {} } = {}) {
   try {
     res = await fetch(url, init);
   } catch {
-    throw new Error('Sem conexão com a instância.');
+    throw new Error(auth
+      ? 'Sem conexão com a instância.'
+      : `Não consegui acessar ${target}. Ela pode estar fora do ar ou não aceitar acesso de outros sites.`);
   }
-  if (res.status === 401) {
+  if (auth && res.status === 401) {
     await logout({ revoke: false, message: 'Sessão expirada. Entre de novo.' });
     throw new Error('Sessão expirada.');
   }
   const json = await res.json().catch(() => null);
-  if (!res.ok) throw new Error((json && json.error) || `Erro ${res.status}`);
+  if (!res.ok) {
+    const err = new Error((json && json.error) || `Erro ${res.status}`);
+    err.status = res.status;
+    throw err;
+  }
   return json;
 }
 
@@ -282,7 +304,7 @@ function mediaEl(sh) {
   return wrap;
 }
 
-function statusEl(s) {
+function statusEl(s, { readonly = false } = {}) {
   const sh = s.reblog || s;
   const a = sh.account;
   const el = h('article', { class: 'status', 'data-id': sh.id });
@@ -319,7 +341,7 @@ function statusEl(s) {
   const favBtn = actionButton('fav', 'fav', sh.favourites_count, sh.favourited, (e) => toggle(e.currentTarget, sh, 'fav'), 'Favoritar');
   const replyBtn = actionButton('reply', 'reply', sh.replies_count, false, () => openComposer({ replyTo: sh }), 'Responder');
   const open = h('a', { class: 'open', href: safeUrl(sh.url || sh.uri), target: '_blank', rel: 'noopener noreferrer', 'aria-label': 'Abrir original' }, svgIcon('external', 18));
-  el.append(h('div', { class: 'actions' }, replyBtn, boostBtn, favBtn, open));
+  el.append(h('div', { class: 'actions' }, ...(readonly ? [open] : [replyBtn, boostBtn, favBtn, open])));
   return el;
 }
 
@@ -376,58 +398,290 @@ function accountView() {
   return card;
 }
 
+/* ----- Explorar ----- */
+
+const SEGMENTS = [
+  ['local', 'Minha instância'],
+  ['global', 'Global'],
+  ['trends', 'Em alta'],
+  ['other', 'Outras'],
+];
+
+function renderList(view, kind, make) {
+  state[kind].items.forEach((i) => view.append(make(i)));
+  view.append(moreButton(kind));
+}
+
+function tagRow(tag) {
+  const hist = tag.history || [];
+  const two = hist.slice(0, 2);
+  const people = two.reduce((n, d) => n + Number(d.accounts || 0), 0);
+  const uses = two.reduce((n, d) => n + Number(d.uses || 0), 0);
+  return h('button', { type: 'button', class: 'tag-row', onclick: () => openTag(tag.name) },
+    h('div', { class: 'tag-info' },
+      h('strong', {}, '#' + tag.name),
+      h('span', { class: 'muted small' }, `${people} pessoas · ${uses} publicações nos últimos 2 dias`)),
+    sparkline(hist.slice(0, 7).map((d) => Number(d.uses || 0)).reverse()));
+}
+
+function trendsView(view) {
+  const t = state.trends;
+  if (t.error) {
+    view.append(h('div', { class: 'empty' }, h('p', { class: 'error' }, t.error),
+      h('button', { type: 'button', onclick: loadTrends }, 'Tentar de novo')));
+    return;
+  }
+  if (t.loading && !t.loaded) { view.append(h('p', { class: 'empty' }, 'Carregando…')); return; }
+  view.append(h('h3', { class: 'section' }, 'Hashtags em alta'));
+  if (!t.tags.length) view.append(h('p', { class: 'empty' }, 'Nenhuma hashtag em alta agora.'));
+  t.tags.forEach((tag) => view.append(tagRow(tag)));
+  if (t.statuses.length) {
+    view.append(h('h3', { class: 'section' }, 'Publicações em alta'));
+    t.statuses.forEach((st) => view.append(statusEl(st)));
+  }
+}
+
+function otherView(view) {
+  const ex = state.explore;
+  const input = h('input', {
+    placeholder: 'ex.: mastodon.social', value: ex.otherHost, autocapitalize: 'none', autocorrect: 'off',
+    spellcheck: 'false', inputmode: 'url', 'aria-label': 'Endereço da instância',
+  });
+  view.append(h('form', { class: 'inst-form', onsubmit: (e) => { e.preventDefault(); goOther(input.value); } },
+    input, h('button', { type: 'submit', class: 'primary' }, 'Ver')));
+  const saved = store.get('otherHosts', []);
+  if (saved.length) {
+    view.append(h('div', { class: 'hosts' }, ...saved.map((host) =>
+      h('button', { type: 'button', class: `chip${host === ex.otherHost ? ' active' : ''}`, onclick: () => goOther(host) }, host))));
+  }
+  view.append(h('p', { class: 'note muted small' },
+    'Mostra a timeline local pública da instância escolhida, só para leitura. Para interagir, abra o original.'));
+  if (ex.otherHost) renderList(view, 'other', (s) => statusEl(s, { readonly: true }));
+}
+
+function exploreView(view) {
+  const ex = state.explore;
+  if (ex.tag) {
+    view.append(h('div', { class: 'tag-head' },
+      h('button', { type: 'button', class: 'icon-btn', 'aria-label': 'Voltar', onclick: closeTag }, svgIcon('back', 22)),
+      h('strong', {}, '#' + ex.tag)));
+    renderList(view, 'tag', (s) => statusEl(s));
+    return;
+  }
+  view.append(h('div', { class: 'seg-bar', role: 'tablist' }, ...SEGMENTS.map(([id, label]) =>
+    h('button', { type: 'button', role: 'tab', class: `chip${ex.seg === id ? ' active' : ''}`, 'aria-selected': ex.seg === id ? 'true' : 'false', onclick: () => setSeg(id) }, label))));
+  if (ex.seg === 'trends') trendsView(view);
+  else if (ex.seg === 'other') otherView(view);
+  else renderList(view, ex.seg, (s) => statusEl(s));
+}
+
+function setSeg(id) {
+  state.explore.seg = id;
+  store.set('seg', id);
+  window.scrollTo(0, 0);
+  render();
+  ensureExploreLoaded();
+}
+
+function openTag(name) {
+  state.explore.tag = name;
+  state.tag = mkList();
+  selectTab('explore');
+}
+
+function closeTag() {
+  state.explore.tag = null;
+  state.tag = mkList();
+  window.scrollTo(0, 0);
+  render();
+  ensureExploreLoaded();
+}
+
+function goOther(raw) {
+  const host = normalizeHost(raw);
+  if (!host) { toast('Endereço de instância inválido.'); return; }
+  state.explore.otherHost = host;
+  store.set('otherHost', host);
+  store.set('otherHosts', [host, ...store.get('otherHosts', []).filter((x) => x !== host)].slice(0, 8));
+  state.other = mkList();
+  loadList('other');
+}
+
+function ensureExploreLoaded() {
+  const ex = state.explore;
+  const kind = ex.tag ? 'tag' : ex.seg;
+  if (kind === 'trends') {
+    if (!state.trends.loaded && !state.trends.loading) loadTrends();
+  } else if (kind === 'other') {
+    if (ex.otherHost && !state.other.items.length && !state.other.loading && !state.other.error) loadList('other');
+  } else if (!state[kind].items.length && !state[kind].loading) {
+    loadList(kind);
+  }
+}
+
+/* ----- Render e carregamento ----- */
+
 function render() {
   const view = $('#view');
   const y = window.scrollY;
   view.replaceChildren();
-  if (state.tab === 'home') {
-    state.home.items.forEach((s) => view.append(statusEl(s)));
-    view.append(moreButton('home'));
-  } else if (state.tab === 'notifications') {
-    state.notifications.items.forEach((n) => view.append(notifEl(n)));
-    view.append(moreButton('notifications'));
-  } else {
-    view.append(accountView());
-  }
+  if (state.tab === 'home') renderList(view, 'home', (s) => statusEl(s));
+  else if (state.tab === 'notifications') renderList(view, 'notifications', notifEl);
+  else if (state.tab === 'explore') exploreView(view);
+  else view.append(accountView());
   window.scrollTo(0, y);
+}
+
+function listSpec(kind) {
+  switch (kind) {
+    case 'home': return { path: '/api/v1/timelines/home' };
+    case 'notifications': return { path: '/api/v1/notifications' };
+    case 'local': return { path: '/api/v1/timelines/public', extra: { local: 'true' } };
+    case 'global': return { path: '/api/v1/timelines/public' };
+    case 'tag': return { path: `/api/v1/timelines/tag/${encodeURIComponent(state.explore.tag || '')}` };
+    case 'other': return { path: '/api/v1/timelines/public', extra: { local: 'true' }, host: state.explore.otherHost, auth: false };
+    default: throw new Error('lista desconhecida: ' + kind);
+  }
 }
 
 async function loadList(kind, append = false) {
   const st = state[kind];
   if (st.loading) return;
+  const spec = listSpec(kind);
+  if (kind === 'other' && !spec.host) return;
   st.loading = true;
   st.error = null;
-  $('#refresh').classList.add('spinning');
+  if (!append) busy(+1);
   render();
   try {
-    const params = { limit: 30 };
+    const params = { limit: 30, ...spec.extra };
     if (append && st.items.length) params.max_id = st.items[st.items.length - 1].id;
-    const data = await api(kind === 'home' ? '/api/v1/timelines/home' : '/api/v1/notifications', { params });
+    const data = await api(spec.path, { params, host: spec.host, auth: spec.auth !== false });
     st.items = append ? st.items.concat(data) : data;
     st.more = data.length > 0;
     if (!append) window.scrollTo(0, 0);
   } catch (e) {
-    st.error = e.message;
+    st.error = kind === 'other' && [401, 403, 422].includes(e.status)
+      ? 'Esta instância não libera a timeline pública sem login.'
+      : e.message;
   } finally {
     st.loading = false;
-    $('#refresh').classList.remove('spinning');
+    if (!append) busy(-1);
     if (session) render();
   }
 }
 
-const TITLES = { home: 'Início', notifications: 'Avisos', account: 'Conta' };
+async function loadTrends() {
+  const t = state.trends;
+  if (t.loading) return;
+  t.loading = true;
+  t.error = null;
+  busy(+1);
+  render();
+  try {
+    const [tags, statuses] = await Promise.all([
+      api('/api/v1/trends/tags', { params: { limit: 20 } }),
+      api('/api/v1/trends/statuses', { params: { limit: 20 } }).catch(() => []),
+    ]);
+    t.tags = tags;
+    t.statuses = statuses;
+    t.loaded = true;
+  } catch (e) {
+    t.error = e.message;
+  } finally {
+    t.loading = false;
+    busy(-1);
+    if (session) render();
+  }
+}
+
+function currentKind() {
+  if (state.tab === 'home' || state.tab === 'notifications') return state.tab;
+  if (state.tab === 'explore') return state.explore.tag ? 'tag' : state.explore.seg;
+  return null;
+}
+
+function refreshCurrent() {
+  const kind = currentKind();
+  if (!kind) return;
+  if (kind === 'trends') loadTrends();
+  else loadList(kind);
+}
 
 function selectTab(tab) {
   state.tab = tab;
-  $('#title').textContent = TITLES[tab];
   document.querySelectorAll('#tabs button').forEach((b) => b.classList.toggle('active', b.dataset.tab === tab));
   $('#fab').hidden = tab === 'account';
-  $('#refresh').hidden = tab === 'account';
   window.scrollTo(0, 0);
   const icon = document.querySelector('#tabs button.active svg');
   if (icon) { icon.classList.remove('bump'); void icon.getBoundingClientRect(); icon.classList.add('bump'); }
   render();
-  if ((tab === 'home' || tab === 'notifications') && !state[tab].items.length && !state[tab].loading) loadList(tab);
+  if (tab === 'home' || tab === 'notifications') {
+    if (!state[tab].items.length && !state[tab].loading) loadList(tab);
+  } else if (tab === 'explore') {
+    ensureExploreLoaded();
+  }
+}
+
+/* ----- Puxar para atualizar ----- */
+
+const HOLD = 56; // altura (px) em que o indicador fica parado enquanto carrega
+let busyCount = 0;
+let pulling = false;
+
+function setPull(px, drag = false) {
+  const ptr = $('#ptr');
+  const view = $('#view');
+  ptr.classList.toggle('dragging', drag);
+  view.classList.toggle('dragging', drag);
+  ptr.style.transform = `translateY(${px - 56}px)`;
+  ptr.style.opacity = String(Math.min(1, px / 36));
+  view.style.transform = px > 0 ? `translateY(${px}px)` : '';
+  const ico = ptr.querySelector('.ico');
+  if (ico) ico.style.transform = ptr.classList.contains('loading') ? '' : `rotate(${(px / HOLD) * 270}deg)`;
+}
+
+function busy(delta) {
+  busyCount = Math.max(0, busyCount + delta);
+  const on = busyCount > 0;
+  $('#ptr').classList.toggle('loading', on);
+  if (!pulling) setPull(on ? HOLD : 0);
+}
+
+function bindPullToRefresh() {
+  let y0 = null;
+  let pull = 0;
+  const canPull = () => state.tab !== 'account' && !$('#composer').open && !$('#app').hidden;
+
+  document.addEventListener('touchstart', (e) => {
+    y0 = (e.touches.length === 1 && window.scrollY <= 0 && canPull()) ? e.touches[0].clientY : null;
+    pull = 0;
+  }, { passive: true });
+
+  document.addEventListener('touchmove', (e) => {
+    if (y0 == null) return;
+    const dy = e.touches[0].clientY - y0;
+    if (dy <= 0 || window.scrollY > 0) {
+      if (pulling) { pulling = false; setPull(busyCount > 0 ? HOLD : 0); }
+      if (window.scrollY > 0) y0 = null;
+      return;
+    }
+    pulling = true;
+    pull = Math.min(dy * 0.55, 110);
+    if (e.cancelable) e.preventDefault(); // evita o "elástico" nativo do iOS
+    setPull(Math.max(pull, busyCount > 0 ? HOLD : 0), true);
+  }, { passive: false });
+
+  const end = () => {
+    if (y0 == null) return;
+    const trigger = pulling && pull >= HOLD;
+    pulling = false;
+    y0 = null;
+    if (trigger) refreshCurrent();
+    setPull(busyCount > 0 ? HOLD : 0);
+  };
+  document.addEventListener('touchend', end);
+  document.addEventListener('touchcancel', end);
 }
 
 /* ---------- Compositor ---------- */
@@ -534,7 +788,14 @@ function bindUi() {
   });
 
   document.querySelectorAll('#tabs button').forEach((b) => b.addEventListener('click', () => selectTab(b.dataset.tab)));
-  $('#refresh').addEventListener('click', () => { if (state.tab !== 'account') loadList(state.tab); });
+  bindPullToRefresh();
+  $('#view').addEventListener('click', (e) => {
+    const a = e.target.closest && e.target.closest('a.hashtag');
+    if (!a) return;
+    e.preventDefault();
+    const name = (a.textContent || '').replace(/^#/, '').trim();
+    if (name) openTag(name);
+  });
   $('#fab').addEventListener('click', () => openComposer());
   $('#cancel-compose').addEventListener('click', () => $('#composer').close());
   $('#compose-form').addEventListener('submit', submitCompose);

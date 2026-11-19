@@ -170,3 +170,32 @@ export function svgIcon(name, size = 22) {
   }
   return svg;
 }
+
+/* ---------- Mini-gráfico (hashtags em alta) ---------- */
+
+export function sparkline(values, w = 72, hgt = 26) {
+  const svg = document.createElementNS(SVG_NS, 'svg');
+  svg.setAttribute('viewBox', `0 0 ${w} ${hgt}`);
+  svg.setAttribute('width', String(w));
+  svg.setAttribute('height', String(hgt));
+  svg.setAttribute('class', 'spark');
+  svg.setAttribute('aria-hidden', 'true');
+  const nums = (values || []).map((v) => (Number.isFinite(v) ? v : 0));
+  if (nums.length < 2) return svg;
+  const max = Math.max(...nums, 1);
+  const pad = 3;
+  const pts = nums.map((v, i) => {
+    const x = pad + (i * (w - pad * 2)) / (nums.length - 1);
+    const y = hgt - pad - (v / max) * (hgt - pad * 2);
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  });
+  const line = document.createElementNS(SVG_NS, 'polyline');
+  line.setAttribute('points', pts.join(' '));
+  line.setAttribute('fill', 'none');
+  line.setAttribute('stroke', 'currentColor');
+  line.setAttribute('stroke-width', '2');
+  line.setAttribute('stroke-linecap', 'round');
+  line.setAttribute('stroke-linejoin', 'round');
+  svg.append(line);
+  return svg;
+}

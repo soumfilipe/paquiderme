@@ -41,10 +41,8 @@
 
   <!-- App -->
   <div id="app" hidden>
-    <header id="topbar">
-      <h2 id="title">Início</h2>
-      <button id="refresh" aria-label="Atualizar"><span data-icon="refresh" data-size="22"></span></button>
-    </header>
+    <div id="statusbg"></div>
+    <div id="ptr" aria-hidden="true"><span data-icon="refresh" data-size="20"></span></div>
 
     <section id="view" aria-live="polite"></section>
 
@@ -52,6 +50,7 @@
 
     <nav id="tabs">
       <button data-tab="home" class="active"><span data-icon="home"></span><span>Início</span></button>
+      <button data-tab="explore"><span data-icon="explore"></span><span>Explorar</span></button>
       <button data-tab="notifications"><span data-icon="notifications"></span><span>Avisos</span></button>
       <button data-tab="account"><span data-icon="account"></span><span>Conta</span></button>
     </nav>

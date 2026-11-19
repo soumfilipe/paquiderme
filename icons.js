@@ -209,5 +209,68 @@ export const ICONS = {
     "stroke-width": "1.5"
    }
   ]
+ ],
+ "explore": [
+  [
+   "path",
+   {
+    "d": "M10 10L5 22M14 10L19 22",
+    "stroke": "currentColor",
+    "stroke-linecap": "round",
+    "stroke-linejoin": "round",
+    "stroke-width": "1.5"
+   }
+  ],
+  [
+   "path",
+   {
+    "d": "M12 4L12 2",
+    "stroke": "currentColor",
+    "stroke-linecap": "round",
+    "stroke-linejoin": "round",
+    "stroke-width": "1.5"
+   }
+  ],
+  [
+   "circle",
+   {
+    "cx": "12",
+    "cy": "7",
+    "r": "3",
+    "stroke": "currentColor",
+    "stroke-width": "1.5"
+   }
+  ],
+  [
+   "path",
+   {
+    "d": "M3 13C4.99073 16.0242 8.27968 18 12 18C15.7203 18 19.0093 16.0242 21 13",
+    "stroke": "currentColor",
+    "stroke-linecap": "round",
+    "stroke-width": "1.5"
+   }
+  ],
+  [
+   "path",
+   {
+    "d": "M12 17V19",
+    "stroke": "currentColor",
+    "stroke-linecap": "round",
+    "stroke-linejoin": "round",
+    "stroke-width": "1.5"
+   }
+  ]
+ ],
+ "back": [
+  [
+   "path",
+   {
+    "d": "M15 6C15 6 9.00001 10.4189 9 12C8.99999 13.5812 15 18 15 18",
+    "stroke": "currentColor",
+    "stroke-linecap": "round",
+    "stroke-linejoin": "round",
+    "stroke-width": "1.5"
+   }
+  ]
  ]
 };
