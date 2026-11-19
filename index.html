@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Paquiderme</title>
+  <meta name="theme-color" content="#14121c">
+  <meta name="color-scheme" content="dark light">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon-192.png">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Paquiderme">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- Tela de login -->
+  <main id="login" hidden>
+    <h1>Paquiderme</h1>
+    <p class="muted">Cliente pessoal para o fediverso.</p>
+    <form id="login-form">
+      <label for="instance">Instância</label>
+      <input id="instance" name="instance" value="organica.social" autocapitalize="none" autocorrect="off" spellcheck="false" inputmode="url" required>
+      <button type="submit" class="primary">Entrar</button>
+    </form>
+    <details id="manual">
+      <summary>Não voltou para o app depois de autorizar?</summary>
+      <p class="muted small">No iPhone, o login dentro do app instalado às vezes abre numa janela separada. Use o código manual: toque abaixo, autorize, copie o código exibido e cole aqui.</p>
+      <form id="manual-form">
+        <button type="button" id="manual-start">1. Abrir autorização manual</button>
+        <input id="manual-code" placeholder="2. Cole o código aqui" autocapitalize="none" autocorrect="off" spellcheck="false">
+        <button type="submit" class="primary">3. Concluir login</button>
+      </form>
+    </details>
+    <p id="login-error" class="error" role="alert"></p>
+  </main>
+
+  <!-- App -->
+  <div id="app" hidden>
+    <header id="topbar">
+      <h2 id="title">Início</h2>
+      <button id="refresh" aria-label="Atualizar">↻</button>
+    </header>
+
+    <section id="view" aria-live="polite"></section>
+
+    <button id="fab" aria-label="Nova publicação">✎</button>
+
+    <nav id="tabs">
+      <button data-tab="home" class="active">Início</button>
+      <button data-tab="notifications">Avisos</button>
+      <button data-tab="account">Conta</button>
+    </nav>
+  </div>
+
+  <!-- Compositor -->
+  <dialog id="composer">
+    <form method="dialog" id="compose-form">
+      <div class="compose-head">
+        <button type="button" class="link" id="cancel-compose">Cancelar</button>
+        <button type="submit" class="primary" id="post-btn">Publicar</button>
+      </div>
+      <p id="reply-to" class="muted small" hidden></p>
+      <input id="cw" placeholder="Aviso de conteúdo (opcional)">
+      <textarea id="text" rows="7" placeholder="No que você está pensando?" maxlength="2000"></textarea>
+      <div class="compose-foot">
+        <select id="visibility" aria-label="Visibilidade">
+          <option value="public">Pública</option>
+          <option value="unlisted">Não listada</option>
+          <option value="private">Só seguidores</option>
+          <option value="direct">Menção direta</option>
+        </select>
+        <span id="count" class="muted small">0/2000</span>
+      </div>
+      <p id="compose-error" class="error" role="alert"></p>
+    </form>
+  </dialog>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>
