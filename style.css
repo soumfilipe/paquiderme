@@ -202,21 +202,50 @@ input, select, textarea {
 .account-card img { width: 72px; height: 72px; border-radius: 16px; }
 
 /* Compositor */
+/* O compositor ocupa a área *visível* (acima do teclado); o app.js ajusta top/height via visualViewport */
 dialog#composer {
+  position: fixed;
+  top: 0; left: 0; right: 0;
   width: min(560px, 100%);
   max-width: 100%;
+  height: 100%;
+  max-height: none;
   margin: 0 auto;
-  top: 0;
+  padding: calc(var(--sat) + 8px) 16px calc(var(--sab) + 10px);
   background: var(--bg);
   color: var(--text);
   border: 0;
-  border-radius: 0 0 16px 16px;
-  padding: calc(var(--sat) + 8px) 16px 16px;
+  border-radius: 0;
+  overflow: hidden;
 }
+dialog#composer[open] { display: flex; flex-direction: column; }
+dialog#composer.kb { padding-bottom: 10px; }
 dialog#composer::backdrop { background: rgb(0 0 0 / .55); }
-#compose-form { display: grid; gap: 10px; }
-.compose-head, .compose-foot { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
-.compose-foot select { width: auto; }
+#compose-form { display: flex; flex-direction: column; gap: 10px; flex: 1; min-height: 0; }
+#compose-form textarea { flex: 1; min-height: 96px; resize: none; }
+.compose-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.compose-tools { display: flex; align-items: center; gap: 4px; }
+.compose-tools #count { margin-left: auto; }
+.tool {
+  display: inline-flex; align-items: center; gap: 2px;
+  background: none; border: 0; border-radius: 10px;
+  padding: 8px 10px; color: var(--muted);
+}
+.tool[aria-pressed="true"], .tool[aria-expanded="true"] { color: var(--accent); background: var(--surface-2); }
+.menu-wrap { position: relative; }
+#vis-menu {
+  position: absolute; left: 0; bottom: calc(100% + 6px);
+  min-width: 270px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
+  box-shadow: 0 10px 30px rgb(0 0 0 / .35);
+  padding: 6px; display: grid; gap: 2px; z-index: 5;
+}
+#vis-menu button {
+  display: grid; grid-template-columns: 24px 1fr 20px; align-items: center; gap: 10px;
+  text-align: left; background: none; border: 0; border-radius: 10px; padding: 10px;
+}
+#vis-menu button[aria-checked="true"] { background: var(--surface-2); color: var(--accent); }
+#vis-menu small { display: block; color: var(--muted); font-size: 12px; }
 
 /* Avisos */
 .notif { border-bottom: 1px solid var(--border); }
@@ -334,3 +363,5 @@ dialog#composer::backdrop { background: rgb(0 0 0 / .55); }
 .inst-form input { flex: 1; min-width: 0; }
 .hosts { display: flex; gap: 8px; flex-wrap: wrap; padding: 8px 16px; }
 .note { padding: 4px 16px 8px; }
+
+input:focus-visible, textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 0; border-color: transparent; }

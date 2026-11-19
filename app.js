@@ -691,22 +691,24 @@ let compose = { replyTo: null, key: null };
 function openComposer({ replyTo = null } = {}) {
   compose = { replyTo, key: crypto.randomUUID() };
   $('#compose-error').textContent = '';
-  $('#cw').value = '';
+  setCw(false);
+  closeVisMenu();
   const note = $('#reply-to');
   if (replyTo) {
     const me = session.account.acct;
     const who = [...new Set([replyTo.account.acct, ...(replyTo.mentions || []).map((m) => m.acct)])].filter((x) => x !== me);
     $('#text').value = who.map((x) => `@${x}`).join(' ') + (who.length ? ' ' : '');
-    $('#visibility').value = replyTo.visibility === 'direct' ? 'direct' : replyTo.visibility;
+    setVisibility(replyTo.visibility);
     note.textContent = `Respondendo a @${replyTo.account.acct}`;
     note.hidden = false;
   } else {
     $('#text').value = store.get('draft', '');
-    $('#visibility').value = store.get('lastVisibility', 'public');
+    setVisibility(store.get('lastVisibility', 'public'));
     note.hidden = true;
   }
   updateCount();
   $('#composer').showModal();
+  fitComposer();
   const t = $('#text');
   t.focus();
   t.setSelectionRange(t.value.length, t.value.length);
@@ -715,6 +717,49 @@ function openComposer({ replyTo = null } = {}) {
 function updateCount() {
   const t = $('#text');
   $('#count').textContent = `${t.value.length}/${t.maxLength}`;
+}
+
+const VIS = [
+  ['public', 'Pública', 'Todos veem e aparece nas timelines'],
+  ['unlisted', 'Não listada', 'Todos veem, mas fica fora das timelines públicas'],
+  ['private', 'Só seguidores', 'Apenas quem segue você'],
+  ['direct', 'Menção direta', 'Apenas as pessoas mencionadas'],
+];
+let composeVis = 'public';
+
+function setVisibility(v) {
+  composeVis = VIS.some(([id]) => id === v) ? v : 'public';
+  $('#vis-btn').replaceChildren(svgIcon('vis-' + composeVis, 22), svgIcon('chev', 14));
+  $('#vis-btn').title = VIS.find(([id]) => id === composeVis)[1];
+  $('#vis-menu').replaceChildren(...VIS.map(([id, label, desc]) =>
+    h('button', {
+      type: 'button', role: 'menuitemradio', 'aria-checked': id === composeVis ? 'true' : 'false',
+      onclick: () => { setVisibility(id); closeVisMenu(); $('#text').focus(); },
+    }, svgIcon('vis-' + id, 22), h('span', {}, label, h('small', {}, desc)), id === composeVis ? svgIcon('check', 18) : h('span'))));
+}
+
+function closeVisMenu() {
+  $('#vis-menu').hidden = true;
+  $('#vis-btn').setAttribute('aria-expanded', 'false');
+}
+
+function setCw(on) {
+  const cw = $('#cw');
+  cw.hidden = !on;
+  if (!on) cw.value = '';
+  $('#cw-btn').setAttribute('aria-pressed', on ? 'true' : 'false');
+  if (on) cw.focus();
+}
+
+// No iOS, ao abrir o teclado a janela visível encolhe e desloca; acompanhamos para o
+// cabeçalho (Cancelar/Publicar) não ficar sob a barra de status.
+function fitComposer() {
+  const d = $('#composer');
+  const vv = window.visualViewport;
+  if (!d.open || !vv) return;
+  d.style.top = `${vv.offsetTop}px`;
+  d.style.height = `${vv.height}px`;
+  d.classList.toggle('kb', window.innerHeight - vv.height > 120);
 }
 
 async function submitCompose(e) {
@@ -730,12 +775,12 @@ async function submitCompose(e) {
       headers: { 'Idempotency-Key': compose.key },
       body: {
         status: text,
-        spoiler_text: $('#cw').value.trim() || undefined,
-        visibility: $('#visibility').value,
+        spoiler_text: (!$('#cw').hidden && $('#cw').value.trim()) || undefined,
+        visibility: composeVis,
         in_reply_to_id: compose.replyTo ? compose.replyTo.id : undefined,
       },
     });
-    if (!compose.replyTo) { store.del('draft'); store.set('lastVisibility', $('#visibility').value); }
+    if (!compose.replyTo) { store.del('draft'); store.set('lastVisibility', composeVis); }
     $('#composer').close();
     toast('Publicado');
     if (state.tab === 'home') loadList('home');
@@ -798,6 +843,20 @@ function bindUi() {
   });
   $('#fab').addEventListener('click', () => openComposer());
   $('#cancel-compose').addEventListener('click', () => $('#composer').close());
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', fitComposer);
+    window.visualViewport.addEventListener('scroll', fitComposer);
+  }
+  $('#composer').addEventListener('close', closeVisMenu);
+  // não deixa os botões da barra tirarem o foco do texto (o teclado não fecha)
+  $('#compose-tools').addEventListener('pointerdown', (e) => { if (!e.target.closest('input, textarea')) e.preventDefault(); });
+  $('#vis-btn').addEventListener('click', () => {
+    const open = $('#vis-menu').hidden;
+    $('#vis-menu').hidden = !open;
+    $('#vis-btn').setAttribute('aria-expanded', open ? 'true' : 'false');
+  });
+  $('#cw-btn').addEventListener('click', () => setCw($('#cw').hidden));
+  document.addEventListener('click', (e) => { if (!e.target.closest('.menu-wrap')) closeVisMenu(); });
   $('#compose-form').addEventListener('submit', submitCompose);
   $('#text').addEventListener('input', () => {
     updateCount();

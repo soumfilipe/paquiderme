@@ -64,18 +64,17 @@
         <button type="submit" class="primary" id="post-btn">Publicar</button>
       </div>
       <p id="reply-to" class="muted small" hidden></p>
-      <input id="cw" placeholder="Aviso de conteúdo (opcional)">
-      <textarea id="text" rows="7" placeholder="No que você está pensando?" maxlength="2000"></textarea>
-      <div class="compose-foot">
-        <select id="visibility" aria-label="Visibilidade">
-          <option value="public">Pública</option>
-          <option value="unlisted">Não listada</option>
-          <option value="private">Só seguidores</option>
-          <option value="direct">Menção direta</option>
-        </select>
+      <input id="cw" placeholder="Aviso de conteúdo" maxlength="200" hidden>
+      <textarea id="text" placeholder="No que você está pensando?" maxlength="2000"></textarea>
+      <p id="compose-error" class="error" role="alert"></p>
+      <div class="compose-tools" id="compose-tools">
+        <div class="menu-wrap">
+          <button type="button" class="tool" id="vis-btn" aria-haspopup="menu" aria-expanded="false" aria-label="Visibilidade"></button>
+          <div id="vis-menu" role="menu" hidden></div>
+        </div>
+        <button type="button" class="tool" id="cw-btn" aria-pressed="false" aria-label="Aviso de conteúdo"><span data-icon="warn" data-size="22"></span></button>
         <span id="count" class="muted small">0/2000</span>
       </div>
-      <p id="compose-error" class="error" role="alert"></p>
     </form>
   </dialog>
 
