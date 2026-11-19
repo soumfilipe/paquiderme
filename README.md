@@ -25,3 +25,6 @@ O service worker usa *stale-while-revalidate*: a versão nova aparece na abertur
 
 ## Próximos passos possíveis
 Streaming por WebSocket, push (Web Push direto do Mastodon), perfis, busca, envio de imagens, enquetes, listas.
+
+## Créditos
+Ícones: [Hugeicons](https://hugeicons.com) (versão gratuita, licença MIT, em `brand/HUGEICONS-LICENSE.md`), as mesmas formas de [animate-ui.com/docs/icons/hugeicons](https://animate-ui.com/docs/icons/hugeicons). As animações são em CSS (`style.css`).

@@ -1,6 +1,6 @@
 import {
   OOB, randomString, pkceChallenge, normalizeHost,
-  sanitizeHtml, emojiFragment, safeUrl, timeAgo, h,
+  sanitizeHtml, emojiFragment, safeUrl, timeAgo, h, svgIcon,
 } from './lib.js';
 
 const APP_NAME = 'Paquiderme';
@@ -209,16 +209,22 @@ function nameNode(account) {
   return h('span', {}, emojiFragment(account.display_name || account.username, account.emojis));
 }
 
+function paintAction(btn, icon, count, on) {
+  btn.replaceChildren(svgIcon(icon, 20), h('span', { class: 'count' }, count ? String(count) : ''));
+  btn.classList.toggle('on', !!on);
+  btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+}
+
 function actionButton(cls, icon, count, on, onclick, label) {
-  const b = h('button', { type: 'button', class: `${cls}${on ? ' on' : ''}`, 'aria-label': label, 'aria-pressed': on ? 'true' : 'false', onclick });
-  b.textContent = `${icon} ${count || ''}`.trim();
+  const b = h('button', { type: 'button', class: cls, 'aria-label': label, onclick });
+  paintAction(b, icon, count, on);
   return b;
 }
 
-function setActionLabel(btn, icon, count, on) {
-  btn.textContent = `${icon} ${count || ''}`.trim();
-  btn.classList.toggle('on', !!on);
-  btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+function hydrateIcons(root = document) {
+  root.querySelectorAll('[data-icon]').forEach((el) => {
+    el.replaceChildren(svgIcon(el.dataset.icon, Number(el.dataset.size) || 24));
+  });
 }
 
 async function toggle(btn, sh, kind) {
@@ -232,12 +238,14 @@ async function toggle(btn, sh, kind) {
     if (isBoost) {
       sh.reblogged = u.reblogged;
       sh.reblogs_count = u.reblogs_count;
-      setActionLabel(btn, '↻', sh.reblogs_count, sh.reblogged);
+      paintAction(btn, 'boost', sh.reblogs_count, sh.reblogged);
     } else {
       sh.favourited = u.favourited;
       sh.favourites_count = u.favourites_count;
-      setActionLabel(btn, '★', sh.favourites_count, sh.favourited);
+      paintAction(btn, 'fav', sh.favourites_count, sh.favourited);
     }
+    btn.classList.add('pulse');
+    setTimeout(() => btn.classList.remove('pulse'), 600);
   } catch (e) {
     toast(e.message);
   } finally {
@@ -280,7 +288,7 @@ function statusEl(s) {
   const el = h('article', { class: 'status', 'data-id': sh.id });
 
   if (s.reblog) {
-    el.append(h('div', { class: 'boost-note' }, '↻ ', nameNode(s.account), ' impulsionou'));
+    el.append(h('div', { class: 'boost-note' }, svgIcon('boost', 14), ' ', nameNode(s.account), ' impulsionou'));
   }
 
   el.append(h('header', {},
@@ -306,12 +314,11 @@ function statusEl(s) {
   }
 
   const canBoost = sh.visibility === 'public' || sh.visibility === 'unlisted';
-  const boostBtn = actionButton('boost', '↻', sh.reblogs_count, sh.reblogged, (e) => toggle(e.currentTarget, sh, 'boost'), 'Impulsionar');
+  const boostBtn = actionButton('boost', 'boost', sh.reblogs_count, sh.reblogged, (e) => toggle(e.currentTarget, sh, 'boost'), 'Impulsionar');
   if (!canBoost) boostBtn.disabled = true;
-  const favBtn = actionButton('fav', '★', sh.favourites_count, sh.favourited, (e) => toggle(e.currentTarget, sh, 'fav'), 'Favoritar');
-  const replyBtn = actionButton('reply', '↩', sh.replies_count, false, () => openComposer({ replyTo: sh }), 'Responder');
-  const open = h('a', { href: safeUrl(sh.url || sh.uri), target: '_blank', rel: 'noopener noreferrer', 'aria-label': 'Abrir original' }, '↗');
-  open.style.cssText = 'margin-left:auto;padding:6px 10px;color:var(--muted);text-decoration:none';
+  const favBtn = actionButton('fav', 'fav', sh.favourites_count, sh.favourited, (e) => toggle(e.currentTarget, sh, 'fav'), 'Favoritar');
+  const replyBtn = actionButton('reply', 'reply', sh.replies_count, false, () => openComposer({ replyTo: sh }), 'Responder');
+  const open = h('a', { class: 'open', href: safeUrl(sh.url || sh.uri), target: '_blank', rel: 'noopener noreferrer', 'aria-label': 'Abrir original' }, svgIcon('external', 18));
   el.append(h('div', { class: 'actions' }, replyBtn, boostBtn, favBtn, open));
   return el;
 }
@@ -362,8 +369,8 @@ function accountView() {
     h('img', { src: safeUrl(a.avatar), alt: '' }),
     h('div', {}, h('strong', {}, nameNode(a)), h('div', { class: 'muted' }, `@${a.acct}@${session.host}`)),
     h('a', { href: safeUrl(a.url), target: '_blank', rel: 'noopener noreferrer' }, 'Abrir perfil no navegador'),
-    h('button', { type: 'button', onclick: updateApp }, 'Atualizar o app (limpar cache)'),
-    h('button', { type: 'button', onclick: () => logout() }, 'Sair'),
+    h('button', { type: 'button', class: 'with-icon', onclick: updateApp }, svgIcon('refresh', 18), 'Atualizar o app (limpar cache)'),
+    h('button', { type: 'button', class: 'with-icon', onclick: () => logout() }, svgIcon('logout', 18), 'Sair'),
     h('p', { class: 'muted small' }, `${APP_NAME} · cliente estático, sem servidor próprio. O token fica só neste aparelho.`),
   );
   return card;
@@ -390,6 +397,7 @@ async function loadList(kind, append = false) {
   if (st.loading) return;
   st.loading = true;
   st.error = null;
+  $('#refresh').classList.add('spinning');
   render();
   try {
     const params = { limit: 30 };
@@ -402,6 +410,7 @@ async function loadList(kind, append = false) {
     st.error = e.message;
   } finally {
     st.loading = false;
+    $('#refresh').classList.remove('spinning');
     if (session) render();
   }
 }
@@ -415,6 +424,8 @@ function selectTab(tab) {
   $('#fab').hidden = tab === 'account';
   $('#refresh').hidden = tab === 'account';
   window.scrollTo(0, 0);
+  const icon = document.querySelector('#tabs button.active svg');
+  if (icon) { icon.classList.remove('bump'); void icon.getBoundingClientRect(); icon.classList.add('bump'); }
   render();
   if ((tab === 'home' || tab === 'notifications') && !state[tab].items.length && !state[tab].loading) loadList(tab);
 }
@@ -503,6 +514,7 @@ async function startApp() {
 }
 
 function bindUi() {
+  hydrateIcons();
   $('#login-form').addEventListener('submit', (e) => { e.preventDefault(); startLogin(false); });
   $('#manual-start').addEventListener('click', () => startLogin(true));
   $('#manual-form').addEventListener('submit', async (e) => {

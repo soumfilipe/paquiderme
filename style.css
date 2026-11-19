@@ -165,7 +165,7 @@ input, select, textarea {
   padding: 12px 16px;
   border-bottom: 1px solid var(--border);
 }
-.status .boost-note { color: var(--boost); font-size: 13px; margin-bottom: 6px; }
+.status .boost-note { color: var(--boost); font-size: 13px; margin-bottom: 6px; display: flex; align-items: center; gap: 6px; }
 .status header { display: flex; gap: 10px; align-items: center; }
 .status img.avatar { width: 44px; height: 44px; border-radius: 10px; flex: none; background: var(--surface-2); }
 .status .who { min-width: 0; flex: 1; }
@@ -259,3 +259,33 @@ dialog#composer::backdrop { background: rgb(0 0 0 / .55); }
 }
 
 .media.sensitive { overflow: hidden; border-radius: 12px; }
+
+/* ---------- Ícones (Hugeicons) e microanimações ---------- */
+.ico { display: block; flex: none; }
+#tabs button { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; font-size: 11px; }
+#refresh, #fab { display: grid; place-items: center; }
+.actions button { display: inline-flex; align-items: center; gap: 6px; }
+.actions button:disabled { opacity: .4; }
+.actions .open { margin-left: auto; padding: 6px 10px; color: var(--muted); display: grid; place-items: center; }
+.with-icon { display: flex; align-items: center; justify-content: center; gap: 8px; }
+
+:root { --fav: #ff8fb1; }
+@media (prefers-color-scheme: light) { :root { --fav: #d6336c; } }
+.actions button.on.fav .ico path { fill: currentColor; }
+.actions button.on.boost .ico path { stroke-width: 2.2; }
+
+@keyframes pop { 0% { transform: scale(1); } 40% { transform: scale(1.4); } 100% { transform: scale(1); } }
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes wiggle { 0%, 100% { transform: rotate(0); } 25% { transform: rotate(-16deg); } 75% { transform: rotate(16deg); } }
+@keyframes bump { 0% { transform: translateY(0); } 40% { transform: translateY(-4px); } 100% { transform: translateY(0); } }
+
+.fav.pulse .ico { animation: pop .45s ease; }
+.boost.pulse .ico { animation: spin .5s ease; }
+.reply:active .ico { transform: translateX(-3px); }
+#fab:active .ico { animation: wiggle .4s ease; }
+#refresh.spinning .ico { animation: spin .9s linear infinite; }
+#tabs button.active .ico.bump { animation: bump .4s ease; }
+
+@media (prefers-reduced-motion: reduce) {
+  .ico, .ico.bump { animation: none !important; }
+}

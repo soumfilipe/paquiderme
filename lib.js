@@ -1,5 +1,7 @@
 // Funções puras/auxiliares, sem estado. Separadas do app.js para poderem ser testadas.
 
+import { ICONS } from './icons.js';
+
 export const OOB = 'urn:ietf:wg:oauth:2.0:oob';
 
 /* ---------- PKCE ---------- */
@@ -146,4 +148,25 @@ export function sanitizeHtml(html, emojis = []) {
   const frag = document.createDocumentFragment();
   walk(body, frag, emojis);
   return frag;
+}
+
+/* ---------- Ícones (Hugeicons) ---------- */
+
+const SVG_NS = 'http://www.w3.org/2000/svg';
+
+export function svgIcon(name, size = 22) {
+  const parts = ICONS[name];
+  const svg = document.createElementNS(SVG_NS, 'svg');
+  svg.setAttribute('viewBox', '0 0 24 24');
+  svg.setAttribute('width', String(size));
+  svg.setAttribute('height', String(size));
+  svg.setAttribute('fill', 'none');
+  svg.setAttribute('aria-hidden', 'true');
+  svg.setAttribute('class', 'ico');
+  for (const [tag, attrs] of parts || []) {
+    const el = document.createElementNS(SVG_NS, tag);
+    for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
+    svg.append(el);
+  }
+  return svg;
 }
