@@ -92,6 +92,7 @@ input, select, textarea {
   margin: 0 auto;
   padding: calc(var(--sat) + 48px) 20px 32px;
 }
+#login #logo { display: block; margin-bottom: 12px; }
 #login h1 { margin: 0 0 4px; color: var(--accent); }
 #login form { display: grid; gap: 12px; margin: 20px 0; }
 #login details { margin-top: 24px; }

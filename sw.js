@@ -1,7 +1,7 @@
 // Service worker do Paquiderme: só guarda o "casco" do app para abrir rápido/offline.
 // Nunca toca em chamadas à API (são de outra origem e passam direto).
 // Ao mudar qualquer arquivo do app, aumente a versão abaixo.
-const CACHE = 'paquiderme-v1';
+const CACHE = 'paquiderme-v2';
 const SHELL = [
   './',
   'index.html',
@@ -12,6 +12,7 @@ const SHELL = [
   'icons/icon-192.png',
   'icons/icon-512.png',
   'icons/apple-touch-icon.png',
+  'brand/logo-mark.svg',
 ];
 
 self.addEventListener('install', (e) => {
