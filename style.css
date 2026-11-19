@@ -269,9 +269,8 @@ dialog#composer::backdrop { background: rgb(0 0 0 / .55); }
 .actions .open { margin-left: auto; padding: 6px 10px; color: var(--muted); display: grid; place-items: center; }
 .with-icon { display: flex; align-items: center; justify-content: center; gap: 8px; }
 
-:root { --fav: #ff8fb1; }
-@media (prefers-color-scheme: light) { :root { --fav: #d6336c; } }
-.actions button.on.fav .ico path { fill: currentColor; }
+.actions button.on.fav .ico circle { fill: currentColor; }
+.actions button.on.fav .ico path { stroke: var(--bg); stroke-width: 2; }
 .actions button.on.boost .ico path { stroke-width: 2.2; }
 
 @keyframes pop { 0% { transform: scale(1); } 40% { transform: scale(1.4); } 100% { transform: scale(1); } }
