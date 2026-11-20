@@ -1616,6 +1616,7 @@ function entryView(view, e) {
   else if (e.type === 'editprofile') editProfileView(view, e);
   else if (e.type === 'filters') filtersView(view, e);
   else if (e.type === 'scheduled') scheduledView(view, e);
+  else if (e.type === 'health') healthView(view, e);
   else if (e.type === 'filteredit') filterEditView(view, e);
 }
 
@@ -1888,6 +1889,69 @@ function filtersView(view, e) {
           } catch (err) { toast(err.message); }
         } }, confirming ? 'Confirmar' : 'Excluir'))));
   });
+}
+
+/* ---------- Status da instância ---------- */
+
+async function timed(fn) {
+  const t0 = performance.now();
+  try { const value = await fn(); return { ok: true, ms: Math.round(performance.now() - t0), value }; }
+  catch (err) { return { ok: false, ms: Math.round(performance.now() - t0), error: err }; }
+}
+
+function openHealth() {
+  const e = { type: 'health', checks: null, running: false, at: null };
+  e.reload = () => runHealth(e);
+  pushEntry(e);
+  runHealth(e);
+}
+
+async function runHealth(e) {
+  if (e.running) return;
+  e.running = true; e.checks = null; render();
+  const host = session.host;
+  const [inst, cred, tl] = await Promise.all([
+    timed(async () => { const r = await fetch(`https://${host}/api/v2/instance`, { cache: 'no-store' }); if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); }),
+    timed(() => api('/api/v1/accounts/verify_credentials')),
+    timed(() => api('/api/v1/timelines/home', { params: { limit: 1 } })),
+  ]);
+  const checks = [];
+  const speed = (ms) => (ms < 800 ? 'ok' : ms < 2500 ? 'warn' : 'bad');
+  if (inst.ok) {
+    const v = inst.value;
+    checks.push({ name: 'Servidor', state: speed(inst.ms), text: `Respondendo em ${inst.ms} ms`, detail: `${v.title || host} · Mastodon ${v.version || '?'}` });
+    const users = v.usage && v.usage.users && v.usage.users.active_month;
+    if (users != null) checks.push({ name: 'Comunidade', state: 'info', text: `${users.toLocaleString('pt-BR')} pessoas ativas no mês`, detail: v.registrations ? (v.registrations.enabled ? (v.registrations.approval_required ? 'Cadastros com aprovação' : 'Cadastros abertos') : 'Cadastros fechados') : '' });
+  } else {
+    checks.push({ name: 'Servidor', state: 'bad', text: navigator.onLine ? 'Não respondeu' : 'Sem conexão com a internet', detail: inst.error && inst.error.message });
+  }
+  if (cred.ok) checks.push({ name: 'Sua sessão', state: speed(cred.ms), text: `Válida, como @${cred.value.acct}`, detail: `${cred.ms} ms` });
+  else if (cred.error && [401, 403].includes(cred.error.status)) checks.push({ name: 'Sua sessão', state: 'bad', text: 'Token recusado: entre de novo nesta conta', detail: cred.error.message });
+  else checks.push({ name: 'Sua sessão', state: 'bad', text: 'Não foi possível verificar', detail: cred.error && cred.error.message });
+  if (tl.ok) checks.push({ name: 'Linha do tempo', state: speed(tl.ms), text: `Carregou em ${tl.ms} ms` });
+  else checks.push({ name: 'Linha do tempo', state: 'bad', text: 'Falhou ao carregar', detail: tl.error && tl.error.message });
+  if (!prefs.live) checks.push({ name: 'Tempo real', state: 'info', text: 'Desativado nas preferências' });
+  else if (live.ws && live.ws.readyState === 1) checks.push({ name: 'Tempo real', state: 'ok', text: 'Conectado' });
+  else checks.push({ name: 'Tempo real', state: 'warn', text: live.tries ? `Reconectando (tentativa ${live.tries})` : 'Sem conexão no momento', detail: 'O Início ainda atualiza ao puxar para baixo.' });
+  e.checks = checks;
+  e.at = new Date();
+  e.running = false;
+  if (session && state.profiles.includes(e)) render();
+}
+
+function healthView(view, e) {
+  view.append(profileBar('Status da instância', closeProfile));
+  if (!e.checks) { view.append(h('p', { class: 'empty' }, 'Verificando…')); return; }
+  const worst = e.checks.some((c) => c.state === 'bad') ? 'bad' : e.checks.some((c) => c.state === 'warn') ? 'warn' : 'ok';
+  const head = { ok: 'Tudo funcionando', warn: 'Funcionando com lentidão ou ressalvas', bad: 'Há problemas' }[worst];
+  view.append(h('div', { class: `health-head ${worst}` }, h('span', { class: 'health-dot' }), h('strong', {}, head)));
+  e.checks.forEach((c) => view.append(h('div', { class: 'health-row' },
+    h('span', { class: `health-dot ${c.state}` }),
+    h('div', {}, h('strong', {}, c.name), h('div', {}, c.text), c.detail ? h('div', { class: 'muted small' }, c.detail) : null))));
+  view.append(h('div', { class: 'health-foot' },
+    h('span', { class: 'muted small' }, `Verificado às ${e.at.toLocaleTimeString('pt-BR', { timeStyle: 'short' })}`),
+    h('button', { type: 'button', onclick: () => e.reload() }, 'Verificar de novo'),
+    h('a', { class: 'link', href: `https://${session.host}/about`, target: '_blank', rel: 'noopener noreferrer' }, 'Sobre a instância')));
 }
 
 function openScheduled() {
@@ -2397,6 +2461,7 @@ function settingsView(view) {
     h('strong', {}, 'Conta e moderação'),
     h('button', { type: 'button', class: 'with-icon', onclick: openFilters }, svgIcon('filter', 18), 'Filtros de palavras'),
     h('button', { type: 'button', class: 'with-icon', onclick: openScheduled }, svgIcon('clock', 18), 'Publicações agendadas'),
+    h('button', { type: 'button', class: 'with-icon', onclick: openHealth }, svgIcon('refresh', 18), 'Status da instância'),
     h('button', { type: 'button', class: 'with-icon', onclick: () => openAccountsEntry('Contas silenciadas', '/api/v1/mutes', 'unmute', 'Reativar') }, svgIcon('mute', 18), 'Contas silenciadas'),
     h('button', { type: 'button', class: 'with-icon', onclick: () => openAccountsEntry('Contas bloqueadas', '/api/v1/blocks', 'unblock', 'Desbloquear') }, svgIcon('block', 18), 'Contas bloqueadas')));
 }
