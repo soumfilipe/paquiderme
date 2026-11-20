@@ -426,10 +426,31 @@ function reportSheet(account, status) {
     remote ? h('label', { class: 'sheet-check' }, fwd, ` Encaminhar também à instância de @${account.acct.split('@')[1]}`) : null));
 }
 
+async function followOptions(account, patch, msg) {
+  try {
+    const rel = await api(`/api/v1/accounts/${account.id}/follow`, { method: 'POST', body: patch });
+    applyRel(account, rel);
+    render();
+    toast(msg);
+  } catch (e) { toast(e.message); }
+}
+
+function followItems(account, rel) {
+  if (!rel || !rel.following) return [];
+  const showing = rel.showing_reblogs !== false;
+  return [
+    { label: showing ? `Ocultar impulsos de @${account.acct}` : `Mostrar impulsos de @${account.acct}`, icon: 'boost',
+      onclick: () => followOptions(account, { reblogs: !showing, notify: !!rel.notifying }, showing ? 'Impulsos ocultos' : 'Impulsos visíveis') },
+    { label: rel.notifying ? `Parar de avisar publicações de @${account.acct}` : `Avisar quando @${account.acct} publicar`, icon: rel.notifying ? 'notifications' : 'notifications-ring',
+      onclick: () => followOptions(account, { reblogs: showing, notify: !rel.notifying }, rel.notifying ? 'Avisos desligados' : 'Você será avisado') },
+  ];
+}
+
 function moderationItems(account, rel, status) {
   const muted = rel && rel.muting;
   const blocked = rel && rel.blocking;
   return [
+    ...followItems(account, rel),
     muted
       ? { label: `Deixar de silenciar @${account.acct}`, icon: 'mute', onclick: () => accountAction(account, 'unmute', 'Silenciamento removido') }
       : { label: `Silenciar @${account.acct}`, icon: 'mute', onclick: () => openSheet(`Silenciar @${account.acct}`, [
@@ -491,6 +512,15 @@ async function statusMenu(sh) {
     items.push({ label: 'Excluir', icon: 'trash', danger: true, onclick: () => openSheet('Excluir esta publicação?', [{ label: 'Excluir', icon: 'trash', danger: true, onclick: async () => {
       try { await api(`/api/v1/statuses/${sh.id}`, { method: 'DELETE' }); removeStatus(sh.id); toast('Publicação excluída'); } catch (e) { toast(e.message); }
     } }]) });
+  }
+  if (own || (sh.mentions || []).some((m) => m.id === session.account.id)) {
+    items.push({ label: sh.muted ? 'Reativar avisos desta conversa' : 'Silenciar esta conversa', icon: 'mute', onclick: async () => {
+      try {
+        const r = await api(`/api/v1/statuses/${sh.id}/${sh.muted ? 'unmute' : 'mute'}`, { method: 'POST' });
+        sh.muted = r.muted;
+        toast(sh.muted ? 'Conversa silenciada' : 'Avisos da conversa reativados');
+      } catch (e) { toast(e.message); }
+    } });
   }
   if (sh.favourites_count > 0) items.push({ label: `Quem favoritou (${sh.favourites_count})`, icon: 'fav', onclick: () => openAccountsEntry('Favoritaram', `/api/v1/statuses/${sh.id}/favourited_by`) });
   if (sh.reblogs_count > 0) items.push({ label: `Quem impulsionou (${sh.reblogs_count})`, icon: 'boost', onclick: () => openAccountsEntry('Impulsionaram', `/api/v1/statuses/${sh.id}/reblogged_by`) });
