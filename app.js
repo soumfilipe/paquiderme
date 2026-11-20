@@ -1173,7 +1173,7 @@ function applyPrefs() {
   root.style.setProperty('--text-adjust', `${prefs.textSize}%`);
   const dark = prefs.theme === 'dark' || (prefs.theme === 'auto' && !(window.matchMedia && matchMedia('(prefers-color-scheme: light)').matches));
   const meta = document.querySelector('meta[name="theme-color"]');
-  if (meta) meta.content = dark ? '#14121c' : '#f7f5fc';
+  if (meta) meta.content = dark ? '#0b0a10' : '#f4f1fa';
 }
 
 function setPref(key, value) {

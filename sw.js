@@ -1,7 +1,7 @@
 // Service worker do Paquiderme: só guarda o "casco" do app para abrir rápido/offline.
 // Nunca toca em chamadas à API (são de outra origem e passam direto).
 // Ao mudar qualquer arquivo do app, aumente a versão abaixo.
-const CACHE = 'paquiderme-v30';
+const CACHE = 'paquiderme-v31';
 const SHELL = [
   './',
   'index.html',
@@ -9,6 +9,12 @@ const SHELL = [
   'lib.js',
   'icons.js',
   'style.css',
+  'fonts/fonts.css',
+  'fonts/bricolage-grotesque-latin-400-normal.woff2',
+  'fonts/bricolage-grotesque-latin-700-normal.woff2',
+  'fonts/bricolage-grotesque-latin-800-normal.woff2',
+  'fonts/jetbrains-mono-latin-400-normal.woff2',
+  'fonts/jetbrains-mono-latin-700-normal.woff2',
   'manifest.webmanifest',
   'icons/icon-192.png',
   'icons/icon-512.png',
