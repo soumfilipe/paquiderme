@@ -314,13 +314,13 @@ function hydrateIcons(root = document) {
   });
 }
 
-async function toggle(btn, sh, kind) {
+async function toggle(btn, sh, kind, visibility) {
   const isBoost = kind === 'boost';
   const was = isBoost ? sh.reblogged : sh.favourited;
   const verb = isBoost ? (was ? 'unreblog' : 'reblog') : (was ? 'unfavourite' : 'favourite');
   btn.disabled = true;
   try {
-    const r = await api(`/api/v1/statuses/${sh.id}/${verb}`, { method: 'POST' });
+    const r = await api(`/api/v1/statuses/${sh.id}/${verb}`, { method: 'POST', body: verb === 'reblog' && visibility ? { visibility } : undefined });
     const u = r.reblog || r; // reblog devolve o "invólucro"; o original vem em .reblog
     if (isBoost) {
       sh.reblogged = u.reblogged;
@@ -338,6 +338,17 @@ async function toggle(btn, sh, kind) {
   } finally {
     btn.disabled = false;
   }
+}
+
+function boostSheet(btn, sh) {
+  const items = [
+    { label: 'Impulsionar', icon: 'boost', onclick: () => toggle(btn, sh, 'boost') },
+    { label: 'Impulsionar sem listar', icon: 'vis-unlisted', onclick: () => toggle(btn, sh, 'boost', 'unlisted') },
+    { label: 'Impulsionar só para seguidores', icon: 'vis-private', onclick: () => toggle(btn, sh, 'boost', 'private') },
+  ];
+  const qa = sh.quote_approval;
+  if (!qa || qa.current_user !== 'denied') items.push({ label: 'Citar', icon: 'edit', onclick: () => openComposer({ quote: sh }) });
+  openSheet('Impulsionar', items);
 }
 
 async function toggleBookmark(btn, sh) {
@@ -594,6 +605,18 @@ function filterHits(s) {
   return list.map((x) => x.filter).filter(Boolean);
 }
 
+function quoteEl(q, host) {
+  const qs = q.quoted_status;
+  if (!qs || q.state !== 'accepted') {
+    const why = { pending: 'Citação aguardando aprovação', rejected: 'Citação não autorizada', revoked: 'Citação removida', deleted: 'Publicação citada excluída', unauthorized: 'Publicação citada indisponível', blocked_account: 'Publicação de conta bloqueada', blocked_domain: 'Publicação de domínio bloqueado', muted_account: 'Publicação de conta silenciada' }[q.state];
+    return why ? h('div', { class: 'quote muted small' }, why) : null;
+  }
+  const a = qs.account;
+  return h('div', { class: 'quote', role: 'button', tabindex: '0', onclick: () => openThread(qs, host), onkeydown: (e) => { if (e.key === 'Enter') openThread(qs, host); } },
+    h('div', { class: 'quote-head' }, h('img', { class: 'avatar sm', src: safeUrl(a.avatar_static || a.avatar), alt: '', loading: 'lazy' }), h('strong', {}, nameNode(a)), h('span', { class: 'acct' }, '@' + a.acct)),
+    qs.spoiler_text ? h('p', { class: 'muted small' }, qs.spoiler_text) : h('div', { class: 'quote-body' }, sanitizeHtml(qs.content, qs.emojis)));
+}
+
 function statusEl(s, { readonly = false, host = null } = {}) {
   const sh = s.reblog || s;
   const hits = revealed.has(sh.id) ? [] : filterHits(s);
@@ -638,7 +661,8 @@ function statusEl(s, { readonly = false, host = null } = {}) {
   const media = mediaEl(sh);
   if (media) parts.push(media);
   if (sh.poll) parts.push(pollEl(sh, { readonly: readonly || !!host }));
-  else if (!media && sh.card) { const cd = cardEl(sh.card); if (cd) parts.push(cd); }
+  else if (!media && sh.card && !sh.quote) { const cd = cardEl(sh.card); if (cd) parts.push(cd); }
+  if (sh.quote && !readonly) { const qe = quoteEl(sh.quote, host); if (qe) parts.push(qe); }
 
   if (sh.spoiler_text) {
     const summary = h('summary', {}, emojiFragment(sh.spoiler_text, sh.emojis));
@@ -648,7 +672,7 @@ function statusEl(s, { readonly = false, host = null } = {}) {
   }
 
   const canBoost = sh.visibility === 'public' || sh.visibility === 'unlisted';
-  const boostBtn = actionButton('boost', 'boost', sh.reblogs_count, sh.reblogged, (e) => toggle(e.currentTarget, sh, 'boost'), 'Impulsionar');
+  const boostBtn = actionButton('boost', 'boost', sh.reblogs_count, sh.reblogged, (e) => (sh.reblogged ? toggle(e.currentTarget, sh, 'boost') : boostSheet(e.currentTarget, sh)), 'Impulsionar');
   if (!canBoost) boostBtn.disabled = true;
   const favBtn = actionButton('fav', 'fav', sh.favourites_count, sh.favourited, (e) => toggle(e.currentTarget, sh, 'fav'), 'Favoritar');
   const replyBtn = actionButton('reply', 'reply', sh.replies_count, false, () => openComposer({ replyTo: sh }), 'Responder');
@@ -2888,12 +2912,13 @@ function saveDraft() {
   store.set('draft', { text: $('#text').value, cw: cw.hidden ? '' : cw.value, poll: compose.poll, lang: compose.lang });
 }
 
-function openComposer({ replyTo = null, edit = null, share = '' } = {}) {
+function openComposer({ replyTo = null, edit = null, share = '', quote = null } = {}) {
   hideSuggest();
   compose.media.forEach((m) => m.preview && m.preview.startsWith('blob:') && URL.revokeObjectURL(m.preview));
   compose = mkCompose();
   compose.replyTo = replyTo;
   compose.edit = edit;
+  compose.quote = quote;
   compose.key = crypto.randomUUID();
   $('#compose-error').textContent = '';
   setCw(false);
@@ -2922,6 +2947,11 @@ function openComposer({ replyTo = null, edit = null, share = '' } = {}) {
     $('#text').value = who.map((x) => `@${x}`).join(' ') + (who.length ? ' ' : '');
     setVisibility(replyTo.visibility);
     note.textContent = `Respondendo a @${replyTo.account.acct}`;
+    note.hidden = false;
+  } else if (quote) {
+    $('#text').value = '';
+    setVisibility(quote.visibility === 'public' ? (prefs.defaultVis || store.get('lastVisibility', 'public')) : quote.visibility);
+    note.textContent = `Citando @${quote.account.acct}: ${plainText(quote.content).slice(0, 80)}`;
     note.hidden = false;
   } else {
     let d = store.get('draft', '');
@@ -3300,6 +3330,7 @@ async function submitCompose(e) {
           spoiler_text: cw,
           visibility: composeVis,
           in_reply_to_id: compose.replyTo ? compose.replyTo.id : undefined,
+          quoted_status_id: compose.quote ? compose.quote.id : undefined,
           media_ids: compose.media.length ? compose.media.map((m) => m.id) : undefined,
           sensitive: compose.media.length && compose.sensitive ? true : undefined,
           poll: poll ? { options: poll.options, expires_in: poll.expires_in, multiple: poll.multiple } : undefined,
@@ -3307,7 +3338,7 @@ async function submitCompose(e) {
           scheduled_at: compose.scheduledAt || undefined,
         },
       });
-      if (!compose.replyTo) { store.del('draft'); store.set('lastVisibility', composeVis); }
+      if (!compose.replyTo && !compose.quote) { store.del('draft'); store.set('lastVisibility', composeVis); }
     }
     $('#composer').close();
     toast(compose.edit ? 'Publicação editada' : compose.scheduledAt ? `Agendada para ${new Date(compose.scheduledAt).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}` : 'Publicado');

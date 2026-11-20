@@ -730,3 +730,12 @@ input, textarea, select { border-radius: var(--radius-field); }
 @keyframes piscar { 50% { opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { .cursor { animation: none; } }
 :root[data-motion='reduce'] .cursor { animation: none; }
+
+/* Citações */
+.quote { margin-top: 10px; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius-field); background: var(--surface-2); cursor: pointer; overflow: hidden; }
+.quote.muted { cursor: default; }
+.quote-head { display: flex; align-items: center; gap: 6px; font-size: 14px; margin-bottom: 4px; min-width: 0; }
+.quote-head .avatar.sm { width: 20px; height: 20px; }
+.quote-head .acct { color: var(--accent); }
+.quote-body { max-height: 8em; overflow: hidden; font-size: 15px; }
+.quote-body p { margin: 0 0 6px; }
