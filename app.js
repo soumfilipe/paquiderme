@@ -35,7 +35,10 @@ const mkState = () => ({
   other: mkList(),
   tag: mkList(),
   trends: { tags: [], statuses: [], loading: false, error: null, loaded: false },
-  profiles: [],        // pilha de perfis abertos por cima da aba atual
+  profiles: [],        // pilha de telas (perfis, conversas, listas) abertas por cima da aba atual
+  lists: { items: [], loaded: false, loading: false, error: null },
+  homeList: null,      // id da lista exibida no Início (null = timeline principal)
+  listTl: mkList(),
   me: null,            // perfil da aba Conta
   settingsOpen: false,
   explore: {
@@ -470,6 +473,242 @@ function threadView(view, t) {
   }
 }
 
+/* ----- Listas ----- */
+
+async function loadLists(quiet = false) {
+  const L = state.lists;
+  if (L.loading) return;
+  L.loading = true;
+  L.error = null;
+  if (!quiet) busy(+1);
+  try {
+    L.items = await api('/api/v1/lists');
+    L.loaded = true;
+    if (state.homeList && !L.items.some((l) => l.id === state.homeList)) { state.homeList = null; }
+  } catch (e) {
+    L.error = quiet ? null : e.message; // se a instância não tiver listas, o Início segue funcionando
+  } finally {
+    L.loading = false;
+    if (!quiet) busy(-1);
+    if (session) render();
+  }
+}
+
+function homeView(view) {
+  const L = state.lists;
+  const chip = (id, label, extra) => h('button', {
+    type: 'button', role: 'tab', class: `chip${(state.homeList || '') === id ? ' active' : ''}`,
+    'aria-selected': (state.homeList || '') === id ? 'true' : 'false', onclick: () => setHomeList(id),
+  }, label, extra);
+  view.append(h('div', { class: 'seg-bar', role: 'tablist' },
+    chip('', 'Início'),
+    ...L.items.map((l) => chip(l.id, l.title)),
+    h('button', { type: 'button', class: 'chip with-icon', 'aria-label': 'Gerenciar listas', onclick: openListsManage }, svgIcon('settings', 16), 'Listas')));
+  renderList(view, state.homeList ? 'list' : 'home', (s) => statusEl(s));
+}
+
+function setHomeList(id) {
+  state.homeList = id || null;
+  state.listTl = mkList();
+  window.scrollTo(0, 0);
+  render();
+  if (id) loadList('list');
+  else if (!state.home.items.length) loadList('home');
+}
+
+function pushEntry(entry) {
+  entry.returnScroll = window.scrollY;
+  state.profiles.push(entry);
+  window.scrollTo(0, 0);
+  render();
+  if (entry.reload) entry.reload();
+}
+
+function entryView(view, e) {
+  if (e.type === 'thread') threadView(view, e);
+  else if (e.type === 'lists') listsManageView(view, e);
+  else if (e.type === 'members') membersView(view, e);
+  else if (e.type === 'pick') listPickView(view, e);
+}
+
+async function createList(title) {
+  title = title.trim();
+  if (!title) return;
+  try {
+    const l = await api('/api/v1/lists', { method: 'POST', body: { title } });
+    state.lists.items.push(l);
+    render();
+  } catch (e) { toast(e.message); }
+}
+
+function createListForm() {
+  const input = h('input', { placeholder: 'Nome da nova lista', maxlength: '100', 'aria-label': 'Nome da nova lista' });
+  return h('form', { class: 'inst-form', onsubmit: async (ev) => { ev.preventDefault(); await createList(input.value); input.value = ''; } },
+    input, h('button', { type: 'submit', class: 'primary' }, 'Criar'));
+}
+
+function openListsManage() {
+  pushEntry({ type: 'lists', editing: null, confirm: null, reload: () => loadLists() });
+}
+
+function listsManageView(view, e) {
+  view.append(profileBar('Listas', closeProfile));
+  view.append(createListForm());
+  const L = state.lists;
+  if (L.error) view.append(h('div', { class: 'empty' }, h('p', { class: 'error' }, L.error), h('button', { type: 'button', onclick: () => loadLists() }, 'Tentar de novo')));
+  else if (L.loading && !L.loaded) view.append(h('p', { class: 'empty' }, 'Carregando…'));
+  else if (!L.items.length) view.append(h('p', { class: 'empty' }, 'Você ainda não tem listas. Crie uma acima e adicione contas que você segue.'));
+  L.items.forEach((l) => view.append(listRow(l, e)));
+}
+
+function listRow(l, e) {
+  if (e.editing === l.id) {
+    const input = h('input', { value: l.title, maxlength: '100', 'aria-label': 'Novo nome da lista' });
+    return h('form', { class: 'list-row', onsubmit: async (ev) => {
+      ev.preventDefault();
+      const title = input.value.trim();
+      if (!title) return;
+      try {
+        const u = await api(`/api/v1/lists/${l.id}`, { method: 'PUT', body: { title } });
+        l.title = u.title;
+        e.editing = null;
+        render();
+      } catch (err) { toast(err.message); }
+    } },
+    input,
+    h('button', { type: 'submit', class: 'primary' }, 'Salvar'),
+    h('button', { type: 'button', onclick: () => { e.editing = null; render(); } }, 'Cancelar'));
+  }
+  const confirming = e.confirm === l.id;
+  return h('div', { class: 'list-row' },
+    h('button', { type: 'button', class: 'list-title link', onclick: () => { state.profiles = []; setHomeList(l.id); } }, l.title),
+    h('button', { type: 'button', onclick: () => openMembers(l) }, 'Membros'),
+    h('button', { type: 'button', onclick: () => { e.editing = l.id; e.confirm = null; render(); } }, 'Renomear'),
+    h('button', { type: 'button', class: confirming ? 'danger' : '', onclick: async () => {
+      if (!confirming) { e.confirm = l.id; render(); setTimeout(() => { if (e.confirm === l.id) { e.confirm = null; if (topEntry() === e) render(); } }, 4000); return; }
+      try {
+        await api(`/api/v1/lists/${l.id}`, { method: 'DELETE' });
+        state.lists.items = state.lists.items.filter((x) => x.id !== l.id);
+        if (state.homeList === l.id) { state.homeList = null; state.listTl = mkList(); }
+        e.confirm = null;
+        render();
+      } catch (err) { toast(err.message); }
+    } }, confirming ? 'Confirmar' : 'Excluir'));
+}
+
+function openMembers(list) {
+  const e = { type: 'members', list, items: [], loaded: false, loading: false, error: null, q: '', results: null };
+  e.reload = () => loadMembers(e);
+  pushEntry(e);
+}
+
+async function loadMembers(e) {
+  if (e.loading) return;
+  e.loading = true;
+  e.error = null;
+  busy(+1);
+  render();
+  try {
+    e.items = await api(`/api/v1/lists/${e.list.id}/accounts`, { params: { limit: 0 } });
+    e.loaded = true;
+  } catch (err) {
+    e.error = err.message;
+  } finally {
+    e.loading = false;
+    busy(-1);
+    if (session && state.profiles.includes(e)) render();
+  }
+}
+
+function personRow(a, label, onclick, cls = '') {
+  return h('div', { class: 'account-row', role: 'button', tabindex: '0', onclick: () => openProfile(a) },
+    h('img', { class: 'avatar', src: safeUrl(a.avatar_static || a.avatar), alt: '', loading: 'lazy' }),
+    h('div', { class: 'who' }, h('div', { class: 'name' }, nameNode(a)), h('span', { class: 'acct' }, '@' + a.acct)),
+    h('button', { type: 'button', class: `row-btn ${cls}`, onclick: (ev) => { ev.stopPropagation(); onclick(ev.currentTarget); } }, label));
+}
+
+function membersView(view, e) {
+  view.append(profileBar(e.list.title, closeProfile));
+  const input = h('input', { placeholder: 'Buscar entre quem você segue', value: e.q, autocapitalize: 'none', autocorrect: 'off', spellcheck: 'false', 'aria-label': 'Buscar contas que você segue' });
+  view.append(h('form', { class: 'inst-form', onsubmit: async (ev) => {
+    ev.preventDefault();
+    e.q = input.value.trim();
+    if (!e.q) { e.results = null; render(); return; }
+    try {
+      e.results = await api('/api/v1/accounts/search', { params: { q: e.q, following: 'true', limit: 10 } });
+    } catch (err) { toast(err.message); return; }
+    render();
+  } }, input, h('button', { type: 'submit', class: 'primary' }, 'Buscar')));
+
+  const memberIds = new Set(e.items.map((m) => m.id));
+  if (e.results) {
+    view.append(h('h3', { class: 'section' }, 'Resultados'));
+    if (!e.results.length) view.append(h('p', { class: 'empty' }, 'Ninguém encontrado entre quem você segue.'));
+    e.results.forEach((a) => view.append(personRow(a, memberIds.has(a.id) ? 'Na lista' : 'Adicionar', async (btn) => {
+      if (memberIds.has(a.id)) return;
+      btn.disabled = true;
+      try {
+        await api(`/api/v1/lists/${e.list.id}/accounts`, { method: 'POST', body: { account_ids: [a.id] } });
+        e.items.push(a);
+        render();
+      } catch (err) { toast(err.message); btn.disabled = false; }
+    })));
+  }
+  view.append(h('h3', { class: 'section' }, `Membros${e.loaded ? ` (${e.items.length})` : ''}`));
+  if (e.error) view.append(h('div', { class: 'empty' }, h('p', { class: 'error' }, e.error), h('button', { type: 'button', onclick: () => loadMembers(e) }, 'Tentar de novo')));
+  else if (e.loading && !e.loaded) view.append(h('p', { class: 'empty' }, 'Carregando…'));
+  else if (!e.items.length) view.append(h('p', { class: 'empty' }, 'Lista vazia. Busque acima uma conta que você segue.'));
+  e.items.forEach((a) => view.append(personRow(a, 'Remover', async (btn) => {
+    btn.disabled = true;
+    try {
+      await api(`/api/v1/lists/${e.list.id}/accounts`, { method: 'DELETE', body: { account_ids: [a.id] } });
+      e.items = e.items.filter((x) => x.id !== a.id);
+      render();
+    } catch (err) { toast(err.message); btn.disabled = false; }
+  })));
+}
+
+// Escolher em quais listas uma conta (que você segue) aparece
+function openListPicker(account) {
+  const e = { type: 'pick', account, member: new Set(), loaded: false, loading: false, error: null };
+  e.reload = async () => {
+    if (e.loading) return;
+    e.loading = true; e.error = null; busy(+1); render();
+    try {
+      const [mine] = await Promise.all([
+        api(`/api/v1/accounts/${account.id}/lists`),
+        state.lists.loaded ? null : loadLists(true),
+      ]);
+      e.member = new Set(mine.map((l) => l.id));
+      e.loaded = true;
+    } catch (err) { e.error = err.message; } finally {
+      e.loading = false; busy(-1);
+      if (session && state.profiles.includes(e)) render();
+    }
+  };
+  pushEntry(e);
+}
+
+function listPickView(view, e) {
+  view.append(profileBar(`Listas de @${e.account.acct}`, closeProfile));
+  view.append(createListForm());
+  if (e.error) view.append(h('div', { class: 'empty' }, h('p', { class: 'error' }, e.error), h('button', { type: 'button', onclick: () => e.reload() }, 'Tentar de novo')));
+  else if (!e.loaded) view.append(h('p', { class: 'empty' }, 'Carregando…'));
+  else if (!state.lists.items.length) view.append(h('p', { class: 'empty' }, 'Crie uma lista acima para começar.'));
+  if (!e.loaded) return;
+  state.lists.items.forEach((l) => {
+    const on = e.member.has(l.id);
+    view.append(h('button', { type: 'button', class: `pick-row${on ? ' on' : ''}`, role: 'switch', 'aria-checked': on ? 'true' : 'false', onclick: async (ev) => {
+      const btn = ev.currentTarget; btn.disabled = true;
+      try {
+        await api(`/api/v1/lists/${l.id}/accounts`, { method: on ? 'DELETE' : 'POST', body: { account_ids: [e.account.id] } });
+        if (on) e.member.delete(l.id); else e.member.add(l.id);
+        render();
+      } catch (err) { toast(err.message); btn.disabled = false; }
+    } }, h('span', { class: 'pick-box' }, on ? svgIcon('check', 16) : null), l.title));
+  });
+}
+
 /* ----- Perfis ----- */
 
 const fmtCount = (n) => new Intl.NumberFormat('pt-BR', { notation: 'compact', maximumFractionDigits: 1 }).format(Number(n) || 0);
@@ -501,7 +740,7 @@ function activeThread() {
 
 function activeProfile() {
   const t = topEntry();
-  if (t) return t.type === 'thread' ? null : t;
+  if (t) return t.type ? null : t;
   return state.tab === 'account' ? state.me : null;
 }
 
@@ -668,7 +907,9 @@ function profileView(view, p) {
 
   const actions = self
     ? h('a', { class: 'btn-link', href: `https://${session.host}/settings/profile`, target: '_blank', rel: 'noopener noreferrer' }, 'Editar')
-    : followBtn(p);
+    : h('div', { class: 'profile-actions' },
+      p.rel && p.rel.following ? h('button', { type: 'button', onclick: () => openListPicker(a) }, 'Listas') : null,
+      followBtn(p));
 
   const badges = [];
   if (a.bot) badges.push('Robô');
@@ -720,6 +961,7 @@ const SEGMENTS = [
 ];
 
 function getList(kind) {
+  if (kind === 'list') return state.listTl;
   if (kind.startsWith('p:')) {
     const p = activeProfile();
     return p ? p[kind.slice(2)] : mkList();
@@ -845,11 +1087,11 @@ function render() {
   const view = $('#view');
   const y = window.scrollY;
   view.replaceChildren();
-  const thr = activeThread();
+  const top = topEntry();
   const prof = activeProfile();
-  if (thr) threadView(view, thr);
+  if (top && top.type) entryView(view, top);
   else if (prof) profileView(view, prof);
-  else if (state.tab === 'home') renderList(view, 'home', (s) => statusEl(s));
+  else if (state.tab === 'home') homeView(view);
   else if (state.tab === 'notifications') renderList(view, 'notifications', notifEl);
   else if (state.tab === 'explore') exploreView(view);
   window.scrollTo(0, y);
@@ -869,6 +1111,7 @@ function listSpec(kind) {
   }
   switch (kind) {
     case 'home': return { path: '/api/v1/timelines/home' };
+    case 'list': return { path: `/api/v1/timelines/list/${encodeURIComponent(state.homeList)}` };
     case 'notifications': return { path: '/api/v1/notifications' };
     case 'local': return { path: '/api/v1/timelines/public', extra: { local: 'true' } };
     case 'global': return { path: '/api/v1/timelines/public' };
@@ -939,10 +1182,12 @@ async function loadTrends() {
 }
 
 function currentKind() {
-  if (activeThread()) return 'thread';
+  const te = topEntry();
+  if (te && te.type) return 'entry';
   const p = activeProfile();
   if (p) return (p === state.me && state.settingsOpen) ? null : 'p:' + (p.people || p.seg);
-  if (state.tab === 'home' || state.tab === 'notifications') return state.tab;
+  if (state.tab === 'home') return state.homeList ? 'list' : 'home';
+  if (state.tab === 'notifications') return state.tab;
   if (state.tab === 'explore') return state.explore.tag ? 'tag' : state.explore.seg;
   return null;
 }
@@ -950,7 +1195,8 @@ function currentKind() {
 function refreshCurrent() {
   const kind = currentKind();
   if (!kind) return;
-  if (kind === 'thread') { loadThread(activeThread()); return; }
+  if (kind === 'entry') { const te = topEntry(); if (te.type === 'thread') loadThread(te); else if (te.reload) te.reload(); return; }
+  if (kind === 'home' || kind === 'list') loadLists(true);
   if (kind.startsWith('p:')) loadProfile(activeProfile());
   if (kind === 'trends') loadTrends();
   else loadList(kind);
@@ -967,7 +1213,11 @@ function selectTab(tab) {
   const icon = document.querySelector('#tabs button.active svg');
   if (icon) { icon.classList.remove('bump'); void icon.getBoundingClientRect(); icon.classList.add('bump'); }
   render();
-  if (tab === 'home' || tab === 'notifications') {
+  if (tab === 'home') {
+    if (!state.lists.loaded) loadLists(true);
+    const k = state.homeList ? 'list' : 'home';
+    if (!getList(k).items.length && !getList(k).loading) loadList(k);
+  } else if (tab === 'notifications') {
     if (!state[tab].items.length && !state[tab].loading) loadList(tab);
   } else if (tab === 'explore') {
     ensureExploreLoaded();
@@ -1187,7 +1437,7 @@ async function submitCompose(e) {
     $('#composer').close();
     toast('Publicado');
     if (activeThread()) loadThread(activeThread());
-    else if (state.tab === 'home') loadList('home');
+    else if (state.tab === 'home' && !state.homeList) loadList('home');
   } catch (err) {
     $('#compose-error').textContent = err.message;
   } finally {
