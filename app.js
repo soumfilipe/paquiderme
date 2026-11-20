@@ -53,6 +53,7 @@ const mkState = () => ({
   trends: { tags: [], statuses: [], loading: false, error: null, loaded: false },
   profiles: [],        // pilha de telas (perfis, conversas, listas) abertas por cima da aba atual
   lists: { items: [], loaded: false, loading: false, error: null },
+  newPosts: [],        // publicações que chegaram em tempo real e esperam o toque para entrar
   homeList: null,      // id da lista exibida no Início (null = timeline principal)
   listTl: mkList(),
   me: null,            // perfil da aba Conta
@@ -202,6 +203,7 @@ async function handleCallback(params) {
 
 function activate(s) {
   saveScroll();
+  liveClose(); live.base = ''; live.query = false; live.tries = 0;
   session = s;
   store.set('session', s);
   state = mkState();
@@ -217,6 +219,7 @@ function activate(s) {
 // Sai da conta ativa; se houver outra, passa para ela
 async function logout({ revoke = true, message = '' } = {}) {
   const gone = session;
+  liveClose();
   if (gone && revoke) {
     const app = store.get('app.' + gone.host);
     if (app) {
@@ -1057,7 +1060,7 @@ function markNotificationsRead() {
 
 /* ---------- Preferências ---------- */
 
-const PREF_DEFAULTS = { theme: 'auto', textSize: 100, motion: 'auto', showSensitive: false, openCw: false, defaultVis: '' };
+const PREF_DEFAULTS = { live: true, theme: 'auto', textSize: 100, motion: 'auto', showSensitive: false, openCw: false, defaultVis: '' };
 let prefs = { ...PREF_DEFAULTS, ...store.get('prefs', {}) };
 
 function applyPrefs() {
@@ -1074,6 +1077,7 @@ function setPref(key, value) {
   prefs[key] = value;
   store.set('prefs', prefs);
   applyPrefs();
+  if (key === 'live') { if (value) liveConnect(); else liveClose(); }
   render();
 }
 
@@ -1098,7 +1102,106 @@ function prefsSection() {
     prefChoice('Animações', 'motion', [['auto', 'Padrão do sistema'], ['reduce', 'Reduzir']]),
     prefChoice('Visibilidade ao publicar', 'defaultVis', [['', 'Lembrar a última'], ['public', 'Pública'], ['unlisted', 'Não listada'], ['private', 'Só seguidores']]),
     prefSwitch('Mostrar mídia sensível sem desfocar', 'showSensitive'),
-    prefSwitch('Abrir avisos de conteúdo já expandidos', 'openCw'));
+    prefSwitch('Abrir avisos de conteúdo já expandidos', 'openCw'),
+    prefSwitch('Receber publicações e avisos em tempo real', 'live'));
+}
+
+/* ---------- Tempo real (streaming) ---------- */
+
+const live = { ws: null, timer: null, tries: 0, gen: 0, base: '', query: false, wasHidden: false };
+
+function liveClose() {
+  live.gen++;
+  clearTimeout(live.timer);
+  if (live.ws) { try { live.ws.close(); } catch { /* ignora */ } live.ws = null; }
+}
+
+function liveRetry(gen) {
+  if (gen !== live.gen) return;
+  clearTimeout(live.timer);
+  const wait = Math.min(30000, 1000 * 2 ** Math.min(live.tries, 5));
+  live.tries++;
+  live.timer = setTimeout(liveConnect, wait);
+}
+
+function liveConnect() {
+  if (!session || !prefs.live || live.ws || document.visibilityState === 'hidden' || typeof WebSocket === 'undefined') return;
+  clearTimeout(live.timer);
+  const gen = ++live.gen;
+  const base = (live.base || `wss://${session.host}`).replace(/^http/, 'ws').replace(/\/$/, '');
+  const tok = session.token;
+  let ws; let opened = false;
+  try {
+    // o token vai no subprotocolo (fora da URL); se a instância recusar, tenta pelo parâmetro
+    ws = live.query ? new WebSocket(`${base}/api/v1/streaming?stream=user&access_token=${encodeURIComponent(tok)}`) : new WebSocket(`${base}/api/v1/streaming?stream=user`, tok);
+  } catch { liveRetry(gen); return; }
+  live.ws = ws;
+  ws.onopen = () => { if (gen !== live.gen) return; opened = true; live.tries = 0; if (live.wasHidden) { live.wasHidden = false; liveCatchUp(); } };
+  ws.onmessage = (ev) => { if (gen === live.gen) liveMessage(ev.data); };
+  ws.onclose = () => {
+    if (gen !== live.gen) return;
+    live.ws = null;
+    if (!opened && !live.query) live.query = true; // próxima tentativa pelo parâmetro
+    liveRetry(gen);
+  };
+  ws.onerror = () => { /* o onclose cuida da nova tentativa */ };
+}
+
+function liveMessage(raw) {
+  let m;
+  try { m = JSON.parse(raw); } catch { return; }
+  const data = () => { try { return JSON.parse(m.payload); } catch { return null; } };
+  if (m.event === 'update') { const s = data(); if (s) liveHome(s); }
+  else if (m.event === 'status.update') { const s = data(); if (s) replaceStatus(s); }
+  else if (m.event === 'delete') { removeStatus(String(m.payload)); }
+  else if (m.event === 'notification') { const n = data(); if (n) liveNotification(n); }
+}
+
+const atTop = () => window.scrollY < 80 && !$('#composer').open;
+
+function liveHome(s) {
+  const st = state.home;
+  if (!st.items.length && !st.loaded) return; // ainda nem carregou: o carregamento já traz
+  if (st.items.some((x) => x.id === s.id) || state.newPosts.some((x) => x.id === s.id)) return;
+  const viewing = state.tab === 'home' && !state.homeList && state.profiles.length === 0;
+  if (viewing && atTop()) { st.items.unshift(s); render(); return; }
+  state.newPosts.unshift(s);
+  updatePill();
+}
+
+function liveNotification(n) {
+  const L = state.notifications;
+  const viewing = state.tab === 'notifications' && state.profiles.length === 0;
+  if (!L.items.some((x) => x.id === n.id) && (L.items.length || L.loaded)) { L.items.unshift(n); L.cached = false; }
+  if (viewing) { render(); markNotificationsRead(); } else { setUnread(true); ringBell(); }
+}
+
+// Ao voltar para o app: busca o que chegou enquanto a conexão esteve fechada
+async function liveCatchUp() {
+  const top = state.home.items[0];
+  if (!top) return;
+  try {
+    const fresh = await api('/api/v1/timelines/home', { params: { since_id: top.id, limit: 40 } });
+    fresh.reverse().forEach((s) => { if (!state.home.items.some((x) => x.id === s.id) && !state.newPosts.some((x) => x.id === s.id)) state.newPosts.unshift(s); });
+    updatePill();
+  } catch { /* sem rede: segue */ }
+}
+
+function updatePill() {
+  const pill = $('#new-pill');
+  if (!pill) return;
+  state.newPosts = state.newPosts.filter((p) => !state.home.items.some((x) => x.id === p.id));
+  const n = state.newPosts.length;
+  const show = n > 0 && !!session && state.tab === 'home' && !state.homeList && state.profiles.length === 0 && !$('#app').hidden;
+  pill.hidden = !show;
+  if (show) $('#new-pill-text').textContent = n === 1 ? '1 nova publicação' : `${n} novas publicações`;
+}
+
+function showNewPosts() {
+  state.home.items = state.newPosts.concat(state.home.items);
+  state.newPosts = [];
+  window.scrollTo(0, 0);
+  render();
 }
 
 /* ---------- Avisos no aparelho (Web Push) ---------- */
@@ -2341,6 +2444,7 @@ function render() {
   else if (state.tab === 'explore') exploreView(view);
   window.scrollTo(0, y);
   updateDock();
+  updatePill();
 }
 
 function listSpec(kind) {
@@ -2387,6 +2491,7 @@ async function loadList(kind, append = false) {
     let headers = null;
     const data = await api(spec.path, { params, host: spec.host, auth: spec.auth !== false, onHeaders: (hd) => { headers = hd; } });
     st.items = append ? st.items.concat(data) : data;
+    st.loaded = true;
     if (spec.link) {
       st.next = parseNextMaxId(headers && headers.get('Link'));
       st.more = !!st.next;
@@ -2947,10 +3052,12 @@ async function startApp() {
   try {
     const res = await fetch(`https://${session.host}/api/v2/instance`);
     const cfg = (await res.json())?.configuration || {};
+    if (cfg.urls?.streaming) live.base = cfg.urls.streaming;
     if (cfg.statuses?.max_characters) { limits.maxChars = cfg.statuses.max_characters; $('#text').maxLength = limits.maxChars; }
     if (cfg.statuses?.max_media_attachments) limits.maxMedia = cfg.statuses.max_media_attachments;
     if (cfg.polls) limits = { ...limits, pollOptions: cfg.polls.max_options || 4, pollChars: cfg.polls.max_characters_per_option || 50, pollMin: cfg.polls.min_expiration || 300, pollMax: cfg.polls.max_expiration || 2629746 };
   } catch { /* mantém os padrões */ }
+  liveConnect();
 }
 
 function bindUi() {
@@ -2976,7 +3083,11 @@ function bindUi() {
 
   document.querySelectorAll('#tabs button').forEach((b) => b.addEventListener('click', () => selectTab(b.dataset.tab)));
   bindPullToRefresh();
-  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') saveScroll(); else checkUnread(); });
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') { saveScroll(); liveClose(); live.wasHidden = true; } else { checkUnread(); liveConnect(); }
+  });
+  window.addEventListener('online', () => { if (!live.ws) { live.tries = 0; liveConnect(); } });
+  $('#new-pill').addEventListener('click', showNewPosts);
   window.addEventListener('pagehide', saveScroll);
   // elementos clicáveis com role="button" (avatares, nomes) também respondem a Enter/espaço (teclado, VoiceOver)
   document.addEventListener('keydown', (e) => {

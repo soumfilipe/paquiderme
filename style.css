@@ -659,3 +659,8 @@ body.has-dock #view { padding-bottom: calc(var(--tabbar-h) + var(--sab) + 96px);
 .handle { overflow-wrap: anywhere; }
 .profile-top { align-items: flex-start; }
 .profile-top > :not(.profile-avatar) { margin-top: 56px; }
+
+/* Novas publicações em tempo real */
+#new-pill { position: fixed; top: calc(var(--sat) + 14px); left: 50%; transform: translateX(-50%); z-index: 12; display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border-radius: 999px; border: 0; background: var(--accent); color: var(--accent-ink); font-weight: 600; box-shadow: 0 6px 20px rgb(0 0 0 / .3); animation: pill-in .25s ease; }
+#new-pill .pill-ico { display: grid; transform: rotate(180deg); }
+@keyframes pill-in { from { opacity: 0; transform: translate(-50%, -12px); } }
