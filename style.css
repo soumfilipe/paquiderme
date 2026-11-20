@@ -430,3 +430,10 @@ img.emoji { height: 1.2em; width: auto; vertical-align: -0.25em; }
 .compose-tools { gap: 6px; }
 .compose-tools #count { margin-right: 6px; }
 .compose-tools #post-btn { min-height: 40px; padding: 0 18px; }
+
+/* Compositor: puxe a alça para baixo para fechar */
+.compose-head { justify-content: center; touch-action: none; margin-top: -4px; }
+#cancel-compose { width: 100%; height: 40px; background: none; border: 0; padding: 0; display: flex; align-items: center; justify-content: center; touch-action: none; }
+#cancel-compose .grabber { width: 44px; height: 5px; border-radius: 3px; background: var(--border); }
+dialog#composer.dragging { transition: none; }
+dialog#composer.settling { transition: transform .22s ease; }

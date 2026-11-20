@@ -1108,6 +1108,47 @@ function setCw(on) {
 
 // No iOS, ao abrir o teclado a janela visível encolhe e desloca; acompanhamos para o
 // cabeçalho (Cancelar/Publicar) não ficar sob a barra de status.
+// Arrastar a alça para baixo fecha o compositor (o rascunho fica guardado); tocar nela também fecha.
+function bindComposerSwipe() {
+  const dlg = $('#composer');
+  const head = $('#compose-head');
+  let y0 = null, dy = 0, moved = false, t0 = 0;
+  const reset = () => { dlg.style.transform = ''; dlg.classList.remove('dragging', 'settling'); };
+  head.addEventListener('pointerdown', (e) => {
+    y0 = e.clientY; dy = 0; moved = false; t0 = e.timeStamp;
+    head.setPointerCapture(e.pointerId);
+    dlg.classList.remove('settling');
+    dlg.classList.add('dragging');
+  });
+  head.addEventListener('pointermove', (e) => {
+    if (y0 == null) return;
+    dy = Math.max(0, e.clientY - y0);
+    if (dy > 6) moved = true;
+    dlg.style.transform = `translateY(${dy}px)`;
+  });
+  const end = (e) => {
+    if (y0 == null) return;
+    const fast = dy / Math.max(1, e.timeStamp - t0) > 0.5; // px/ms
+    y0 = null;
+    if (!moved && e.type === 'pointerup') { reset(); dlg.close(); return; } // toque simples
+    if (moved && (dy > 110 || (fast && dy > 40))) {
+      dlg.classList.remove('dragging');
+      dlg.classList.add('settling');
+      dlg.style.transform = 'translateY(100%)';
+      setTimeout(() => { dlg.close(); reset(); }, 200);
+    } else {
+      dlg.classList.remove('dragging');
+      dlg.classList.add('settling');
+      dlg.style.transform = '';
+      setTimeout(reset, 240);
+    }
+  };
+  head.addEventListener('pointerup', end);
+  head.addEventListener('pointercancel', end);
+  // acessibilidade (teclado/leitor de tela): Enter/espaço disparam click sem pointer events
+  $('#cancel-compose').addEventListener('click', (e) => { if (e.detail === 0) dlg.close(); });
+}
+
 function fitComposer() {
   const d = $('#composer');
   const vv = window.visualViewport;
@@ -1217,7 +1258,7 @@ function bindUi() {
     openProfileByAcct(art._host && !m.acct.includes('@') ? `${m.acct}@${art._host}` : m.acct);
   });
   $('#fab').addEventListener('click', () => openComposer());
-  $('#cancel-compose').addEventListener('click', () => $('#composer').close());
+  bindComposerSwipe();
   if (window.visualViewport) {
     window.visualViewport.addEventListener('resize', fitComposer);
     window.visualViewport.addEventListener('scroll', fitComposer);

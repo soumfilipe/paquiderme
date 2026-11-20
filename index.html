@@ -59,8 +59,8 @@
   <!-- Compositor -->
   <dialog id="composer">
     <form method="dialog" id="compose-form">
-      <div class="compose-head">
-        <button type="button" class="link" id="cancel-compose">Cancelar</button>
+      <div class="compose-head" id="compose-head">
+        <button type="button" id="cancel-compose" aria-label="Fechar o compositor (ou deslize para baixo)"><span class="grabber"></span></button>
       </div>
       <p id="reply-to" class="muted small" hidden></p>
       <input id="cw" placeholder="Aviso de conteúdo" maxlength="200" hidden>
