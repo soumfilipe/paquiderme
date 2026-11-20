@@ -24,7 +24,7 @@ Abra `http://localhost:8765/`. O `localhost` conta como contexto seguro, então 
 O service worker usa *stale-while-revalidate*: a versão nova aparece na abertura seguinte. Ao mudar arquivos, aumente `CACHE` em `sw.js`. Em último caso: aba Conta → *Atualizar o app*.
 
 ## Recursos
-Início, Explorar (minha instância, global, hashtags e publicações em alta, e leitura da timeline local de outras instâncias), Avisos e Conta. Puxe a lista para baixo para atualizar.
+Início, Perfis (o seu, na aba Conta, e o de qualquer conta), Explorar (minha instância, global, hashtags e publicações em alta, e leitura da timeline local de outras instâncias), Avisos e Conta. Puxe a lista para baixo para atualizar.
 
 ## Próximos passos possíveis
 Streaming por WebSocket, push (Web Push direto do Mastodon), perfis, busca, envio de imagens, enquetes, listas.

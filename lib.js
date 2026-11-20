@@ -199,3 +199,15 @@ export function sparkline(values, w = 72, hgt = 26) {
   svg.append(line);
   return svg;
 }
+
+/* ---------- Paginação por cabeçalho Link (seguidores/seguindo) ---------- */
+
+export function parseNextMaxId(link) {
+  const m = /<([^>]+)>\s*;\s*rel="next"/.exec(link || '');
+  if (!m) return null;
+  try {
+    return new URL(m[1]).searchParams.get('max_id');
+  } catch {
+    return null;
+  }
+}

@@ -1,6 +1,6 @@
 import {
   OOB, randomString, pkceChallenge, normalizeHost,
-  sanitizeHtml, emojiFragment, safeUrl, timeAgo, h, svgIcon, sparkline,
+  sanitizeHtml, emojiFragment, safeUrl, timeAgo, h, svgIcon, sparkline, parseNextMaxId,
 } from './lib.js';
 
 const APP_NAME = 'Paquiderme';
@@ -35,6 +35,9 @@ const mkState = () => ({
   other: mkList(),
   tag: mkList(),
   trends: { tags: [], statuses: [], loading: false, error: null, loaded: false },
+  profiles: [],        // pilha de perfis abertos por cima da aba atual
+  me: null,            // perfil da aba Conta
+  settingsOpen: false,
   explore: {
     seg: store.get('seg', 'local'),
     tag: null,
@@ -192,12 +195,17 @@ async function logout({ revoke = true, message = '' } = {}) {
 
 /* ---------- API ---------- */
 
-async function api(path, { method = 'GET', params, body, headers = {}, host, auth = true } = {}) {
+async function api(path, { method = 'GET', params, body, headers = {}, host, auth = true, onHeaders } = {}) {
   const target = host || session.host;
   // o token nunca sai da instância do usuário
   if (auth && target !== session.host) throw new Error('Requisição autenticada para outra instância bloqueada.');
   const url = new URL(path, `https://${target}`);
-  if (params) for (const [k, v] of Object.entries(params)) if (v != null) url.searchParams.set(k, v);
+  if (params) {
+    for (const [k, v] of Object.entries(params)) {
+      if (Array.isArray(v)) v.forEach((x) => url.searchParams.append(k, x));
+      else if (v != null) url.searchParams.set(k, v);
+    }
+  }
   const init = { method, headers: { ...headers } };
   if (auth) init.headers.Authorization = `Bearer ${session.token}`;
   if (body) {
@@ -216,6 +224,7 @@ async function api(path, { method = 'GET', params, body, headers = {}, host, aut
     await logout({ revoke: false, message: 'Sessão expirada. Entre de novo.' });
     throw new Error('Sessão expirada.');
   }
+  if (onHeaders) onHeaders(res.headers);
   const json = await res.json().catch(() => null);
   if (!res.ok) {
     const err = new Error((json && json.error) || `Erro ${res.status}`);
@@ -304,20 +313,23 @@ function mediaEl(sh) {
   return wrap;
 }
 
-function statusEl(s, { readonly = false } = {}) {
+function statusEl(s, { readonly = false, host = null } = {}) {
   const sh = s.reblog || s;
   const a = sh.account;
   const el = h('article', { class: 'status', 'data-id': sh.id });
+  el._status = sh;
+  el._host = host;
 
   if (s.reblog) {
-    el.append(h('div', { class: 'boost-note' }, svgIcon('boost', 14), ' ', nameNode(s.account), ' impulsionou'));
+    el.append(h('div', { class: 'boost-note' }, svgIcon('boost', 14), ' ', h('span', { class: 'link-name', role: 'button', tabindex: '0', onclick: () => openAccountFrom(s.account, host) }, nameNode(s.account)), ' impulsionou'));
   }
 
   el.append(h('header', {},
-    h('img', { class: 'avatar', src: safeUrl(a.avatar_static || a.avatar), alt: '', loading: 'lazy' }),
-    h('div', { class: 'who' },
-      h('div', { class: 'name' }, nameNode(a)),
-      h('span', { class: 'acct' }, '@' + a.acct)),
+    h('div', { class: 'who-link', role: 'button', tabindex: '0', 'aria-label': `Abrir perfil de ${a.acct}`, onclick: () => openAccountFrom(a, host) },
+      h('img', { class: 'avatar', src: safeUrl(a.avatar_static || a.avatar), alt: '', loading: 'lazy' }),
+      h('div', { class: 'who' },
+        h('div', { class: 'name' }, nameNode(a)),
+        h('span', { class: 'acct' }, '@' + a.acct))),
     h('time', { datetime: sh.created_at, title: new Date(sh.created_at).toLocaleString('pt-BR') }, timeAgo(sh.created_at)),
   ));
 
@@ -365,15 +377,15 @@ const NOTIF_KINDS = {
 function notifEl(n) {
   const wrap = h('div', { class: 'notif' });
   wrap.append(h('div', { class: 'notif-kind' },
-    h('strong', {}, nameNode(n.account)), ' ', NOTIF_KINDS[n.type] || n.type,
-    ' · ', timeAgo(n.created_at)));
+    h('strong', { class: 'link-name', role: 'button', tabindex: '0', onclick: () => openProfile(n.account) }, nameNode(n.account)),
+    ' ', NOTIF_KINDS[n.type] || n.type, ' · ', timeAgo(n.created_at)));
   if (n.status) wrap.append(statusEl(n.status));
-  else wrap.append(h('div', { class: 'notif-kind' }, '@' + n.account.acct));
+  else wrap.append(accountRow(n.account));
   return wrap;
 }
 
 function moreButton(kind) {
-  const st = state[kind];
+  const st = getList(kind);
   if (st.loading) return h('p', { class: 'empty' }, 'Carregando…');
   if (st.error) {
     return h('div', { class: 'empty' },
@@ -385,18 +397,234 @@ function moreButton(kind) {
   return h('button', { type: 'button', class: 'more', onclick: () => loadList(kind, true) }, 'Carregar mais');
 }
 
-function accountView() {
-  const a = session.account;
-  const card = h('div', { class: 'account-card' },
-    h('img', { src: safeUrl(a.avatar), alt: '' }),
-    h('div', {}, h('strong', {}, nameNode(a)), h('div', { class: 'muted' }, `@${a.acct}@${session.host}`)),
-    h('a', { href: safeUrl(a.url), target: '_blank', rel: 'noopener noreferrer' }, 'Abrir perfil no navegador'),
+/* ----- Perfis ----- */
+
+const fmtCount = (n) => new Intl.NumberFormat('pt-BR', { notation: 'compact', maximumFractionDigits: 1 }).format(Number(n) || 0);
+
+const PROFILE_SEGS = [
+  ['posts', 'Publicações'],
+  ['replies', 'Com respostas'],
+  ['media', 'Mídia'],
+];
+
+function mkProfile(account) {
+  return {
+    id: account.id, account, rel: null, loaded: false, error: null,
+    seg: 'posts', people: null,
+    posts: mkList(), replies: mkList(), media: mkList(), followers: mkList(), following: mkList(),
+    returnScroll: 0,
+  };
+}
+
+function activeProfile() {
+  if (state.profiles.length) return state.profiles[state.profiles.length - 1];
+  return state.tab === 'account' ? state.me : null;
+}
+
+const fullAcct = (a) => (a.acct.includes('@') ? a.acct : `${a.acct}@${session.host}`);
+
+function accountRow(a) {
+  return h('div', { class: 'account-row', role: 'button', tabindex: '0', onclick: () => openProfile(a) },
+    h('img', { class: 'avatar', src: safeUrl(a.avatar_static || a.avatar), alt: '', loading: 'lazy' }),
+    h('div', { class: 'who' },
+      h('div', { class: 'name' }, nameNode(a)),
+      h('span', { class: 'acct' }, '@' + a.acct)));
+}
+
+function openProfile(account) {
+  const p = mkProfile(account);
+  p.returnScroll = window.scrollY;
+  state.profiles.push(p);
+  window.scrollTo(0, 0);
+  render();
+  loadProfile(p);
+  ensureProfileLoaded(p);
+}
+
+// Contas vindas de outra instância têm ids que não valem na sua: resolvemos pelo endereço (usuário@instância).
+function openAccountFrom(account, host) {
+  if (!host) { openProfile(account); return; }
+  openProfileByAcct(account.acct.includes('@') ? account.acct : `${account.acct}@${host}`);
+}
+
+async function openProfileByAcct(acct) {
+  busy(+1);
+  try {
+    let a;
+    try {
+      a = await api('/api/v1/accounts/lookup', { params: { acct } });
+    } catch (e) {
+      if (e.status !== 404) throw e;
+      const r = await api('/api/v2/search', { params: { q: '@' + acct.replace(/^@/, ''), resolve: 'true', type: 'accounts', limit: 1 } });
+      a = r.accounts && r.accounts[0];
+      if (!a) throw new Error('Conta não encontrada.');
+    }
+    openProfile(a);
+  } catch (e) {
+    toast(e.message);
+  } finally {
+    busy(-1);
+  }
+}
+
+function closeProfile() {
+  const p = state.profiles.pop();
+  render();
+  window.scrollTo(0, (p && p.returnScroll) || 0);
+}
+
+async function loadProfile(p) {
+  if (!p) return;
+  busy(+1);
+  p.error = null;
+  try {
+    const self = p.id === session.account.id;
+    const [acct, rels] = await Promise.all([
+      api(`/api/v1/accounts/${p.id}`),
+      self ? Promise.resolve(null) : api('/api/v1/accounts/relationships', { params: { 'id[]': [p.id] } }),
+    ]);
+    p.account = acct;
+    p.rel = rels ? rels[0] : null;
+    p.loaded = true;
+  } catch (e) {
+    p.error = e.message;
+  } finally {
+    busy(-1);
+    if (session) render();
+  }
+}
+
+function ensureProfileLoaded(p) {
+  if (!p || activeProfile() !== p) return;
+  const l = p[p.people || p.seg];
+  if (!l.items.length && !l.loading) loadList('p:' + (p.people || p.seg));
+}
+
+function setProfileSeg(p, id) {
+  p.seg = id;
+  p.people = null;
+  window.scrollTo(0, 0);
+  render();
+  ensureProfileLoaded(p);
+}
+
+function openPeople(p, kind) {
+  p.people = kind;
+  p.peopleScroll = window.scrollY;
+  window.scrollTo(0, 0);
+  render();
+  ensureProfileLoaded(p);
+}
+
+function closePeople(p) {
+  p.people = null;
+  render();
+  window.scrollTo(0, p.peopleScroll || 0);
+}
+
+function followBtn(p) {
+  const r = p.rel;
+  const st = !r ? null : r.blocking ? 'blocked' : r.following ? 'following' : r.requested ? 'requested' : 'none';
+  const label = { blocked: 'Bloqueado', following: 'Seguindo', requested: 'Pedido enviado', none: 'Seguir' }[st] || 'Seguir';
+  return h('button', {
+    type: 'button',
+    class: st === 'none' || !st ? 'primary' : '',
+    disabled: !r || st === 'blocked',
+    onclick: async (e) => {
+      const btn = e.currentTarget;
+      btn.disabled = true;
+      const verb = st === 'following' || st === 'requested' ? 'unfollow' : 'follow';
+      try {
+        p.rel = await api(`/api/v1/accounts/${p.id}/${verb}`, { method: 'POST' });
+        render();
+      } catch (err) {
+        toast(err.message);
+        btn.disabled = false;
+      }
+    },
+  }, label);
+}
+
+function profileBar(title, onBack, extra) {
+  return h('div', { class: 'tag-head profile-bar' },
+    onBack ? h('button', { type: 'button', class: 'icon-btn', 'aria-label': 'Voltar', onclick: onBack }, svgIcon('back', 22)) : null,
+    h('strong', { class: 'profile-title' }, title),
+    extra);
+}
+
+function settingsView(view) {
+  view.append(profileBar('Configurações', () => { state.settingsOpen = false; window.scrollTo(0, 0); render(); }));
+  view.append(h('div', { class: 'account-card' },
+    h('div', { class: 'muted' }, `Conectado como @${session.account.acct}@${session.host}`),
+    h('a', { href: `https://${session.host}/settings/profile`, target: '_blank', rel: 'noopener noreferrer' }, 'Editar perfil e preferências na instância'),
     h('button', { type: 'button', class: 'with-icon', onclick: updateApp }, svgIcon('refresh', 18), 'Atualizar o app (limpar cache)'),
     h('button', { type: 'button', class: 'with-icon', onclick: () => logout() }, svgIcon('logout', 18), 'Sair'),
-    h('p', { class: 'muted small' }, `${APP_NAME} · cliente estático, sem servidor próprio. O token fica só neste aparelho.`),
-  );
-  return card;
+    h('p', { class: 'muted small' }, `${APP_NAME} · cliente estático, sem servidor próprio. O token fica só neste aparelho.`)));
 }
+
+function profileView(view, p) {
+  const isRoot = p === state.me && state.profiles.length === 0;
+  if (isRoot && state.settingsOpen) { settingsView(view); return; }
+
+  if (p.people) {
+    view.append(profileBar(p.people === 'followers' ? 'Seguidores' : 'Seguindo', () => closePeople(p)));
+    renderList(view, 'p:' + p.people, accountRow);
+    return;
+  }
+
+  const a = p.account;
+  const self = a.id === session.account.id;
+  const gear = isRoot
+    ? h('button', { type: 'button', class: 'icon-btn push-right', 'aria-label': 'Configurações do app', onclick: () => { state.settingsOpen = true; window.scrollTo(0, 0); render(); } }, svgIcon('settings', 22))
+    : null;
+  view.append(profileBar(nameNode(a), isRoot ? null : closeProfile, gear));
+
+  const hdr = safeUrl(a.header_static || a.header);
+  view.append(hdr && !/missing\.png/.test(hdr) ? h('img', { class: 'banner', src: hdr, alt: '' }) : h('div', { class: 'banner' }));
+
+  const actions = self
+    ? h('a', { class: 'btn-link', href: `https://${session.host}/settings/profile`, target: '_blank', rel: 'noopener noreferrer' }, 'Editar')
+    : followBtn(p);
+
+  const badges = [];
+  if (a.bot) badges.push('Robô');
+  if (a.group) badges.push('Grupo');
+  if (a.locked) badges.push('Perfil fechado');
+  if (p.rel && p.rel.followed_by) badges.push('Segue você');
+  if (p.rel && p.rel.muting) badges.push('Silenciado');
+  if (p.rel && p.rel.blocked_by) badges.push('Bloqueou você');
+
+  const fields = (a.fields || []).filter((f) => f.name || f.value).map((f) => h('div', { class: 'field' },
+    h('dt', {}, emojiFragment(f.name || '', a.emojis)),
+    h('dd', { class: f.verified_at ? 'verified' : '' }, sanitizeHtml(f.value, a.emojis), f.verified_at ? svgIcon('check', 16) : null)));
+
+  view.append(h('section', { class: 'profile-head' },
+    h('div', { class: 'profile-top' },
+      h('img', { class: 'profile-avatar', src: safeUrl(a.avatar_static || a.avatar), alt: '' }),
+      actions),
+    h('h2', { class: 'profile-name' }, nameNode(a)),
+    h('div', { class: 'muted' }, '@' + fullAcct(a)),
+    badges.length ? h('div', { class: 'badges' }, ...badges.map((b) => h('span', { class: 'badge' }, b))) : null,
+    a.moved ? h('p', { class: 'muted small' }, 'Mudou para ', h('span', { class: 'link-name', role: 'button', tabindex: '0', onclick: () => openProfile(a.moved) }, '@' + a.moved.acct)) : null,
+    a.note ? h('div', { class: 'bio' }, sanitizeHtml(a.note, a.emojis)) : null,
+    fields.length ? h('dl', { class: 'fields' }, ...fields) : null,
+    h('div', { class: 'counts' },
+      h('span', {}, h('strong', {}, fmtCount(a.statuses_count)), ' publicações'),
+      h('button', { type: 'button', class: 'count-btn', onclick: () => openPeople(p, 'following') }, h('strong', {}, fmtCount(a.following_count)), ' seguindo'),
+      h('button', { type: 'button', class: 'count-btn', onclick: () => openPeople(p, 'followers') }, h('strong', {}, fmtCount(a.followers_count)), ' seguidores')),
+    h('p', { class: 'muted small' },
+      a.created_at ? `Entrou em ${new Date(a.created_at).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })} · ` : '',
+      h('a', { href: safeUrl(a.url), target: '_blank', rel: 'noopener noreferrer' }, 'abrir no navegador')),
+    p.error ? h('p', { class: 'error' }, p.error) : null));
+
+  view.append(h('div', { class: 'seg-bar under', role: 'tablist' }, ...PROFILE_SEGS.map(([id, label]) =>
+    h('button', { type: 'button', role: 'tab', class: `chip${p.seg === id ? ' active' : ''}`, 'aria-selected': p.seg === id ? 'true' : 'false', onclick: () => setProfileSeg(p, id) }, label))));
+  if (a.locked && !self && !(p.rel && p.rel.following)) {
+    view.append(h('p', { class: 'note muted small' }, 'Perfil fechado: siga a conta para ver as publicações.'));
+  }
+  renderList(view, 'p:' + p.seg, (s) => statusEl(s));
+}
+
 
 /* ----- Explorar ----- */
 
@@ -407,8 +635,16 @@ const SEGMENTS = [
   ['other', 'Outras'],
 ];
 
+function getList(kind) {
+  if (kind.startsWith('p:')) {
+    const p = activeProfile();
+    return p ? p[kind.slice(2)] : mkList();
+  }
+  return state[kind];
+}
+
 function renderList(view, kind, make) {
-  state[kind].items.forEach((i) => view.append(make(i)));
+  getList(kind).items.forEach((i) => view.append(make(i)));
   view.append(moreButton(kind));
 }
 
@@ -456,7 +692,7 @@ function otherView(view) {
   }
   view.append(h('p', { class: 'note muted small' },
     'Mostra a timeline local pública da instância escolhida, só para leitura. Para interagir, abra o original.'));
-  if (ex.otherHost) renderList(view, 'other', (s) => statusEl(s, { readonly: true }));
+  if (ex.otherHost) renderList(view, 'other', (s) => statusEl(s, { readonly: true, host: ex.otherHost }));
 }
 
 function exploreView(view) {
@@ -525,14 +761,26 @@ function render() {
   const view = $('#view');
   const y = window.scrollY;
   view.replaceChildren();
-  if (state.tab === 'home') renderList(view, 'home', (s) => statusEl(s));
+  const prof = activeProfile();
+  if (prof) profileView(view, prof);
+  else if (state.tab === 'home') renderList(view, 'home', (s) => statusEl(s));
   else if (state.tab === 'notifications') renderList(view, 'notifications', notifEl);
   else if (state.tab === 'explore') exploreView(view);
-  else view.append(accountView());
   window.scrollTo(0, y);
 }
 
 function listSpec(kind) {
+  if (kind.startsWith('p:')) {
+    const id = activeProfile().id;
+    switch (kind.slice(2)) {
+      case 'posts': return { path: `/api/v1/accounts/${id}/statuses`, extra: { exclude_replies: 'true' } };
+      case 'replies': return { path: `/api/v1/accounts/${id}/statuses` };
+      case 'media': return { path: `/api/v1/accounts/${id}/statuses`, extra: { only_media: 'true' } };
+      case 'followers': return { path: `/api/v1/accounts/${id}/followers`, extra: { limit: 40 }, link: true };
+      case 'following': return { path: `/api/v1/accounts/${id}/following`, extra: { limit: 40 }, link: true };
+      default: throw new Error('lista de perfil desconhecida: ' + kind);
+    }
+  }
   switch (kind) {
     case 'home': return { path: '/api/v1/timelines/home' };
     case 'notifications': return { path: '/api/v1/notifications' };
@@ -545,7 +793,7 @@ function listSpec(kind) {
 }
 
 async function loadList(kind, append = false) {
-  const st = state[kind];
+  const st = getList(kind);
   if (st.loading) return;
   const spec = listSpec(kind);
   if (kind === 'other' && !spec.host) return;
@@ -555,10 +803,19 @@ async function loadList(kind, append = false) {
   render();
   try {
     const params = { limit: 30, ...spec.extra };
-    if (append && st.items.length) params.max_id = st.items[st.items.length - 1].id;
-    const data = await api(spec.path, { params, host: spec.host, auth: spec.auth !== false });
+    if (append) {
+      if (spec.link) { if (st.next) params.max_id = st.next; } // seguidores/seguindo paginam pelo cabeçalho Link
+      else if (st.items.length) params.max_id = st.items[st.items.length - 1].id;
+    }
+    let headers = null;
+    const data = await api(spec.path, { params, host: spec.host, auth: spec.auth !== false, onHeaders: (hd) => { headers = hd; } });
     st.items = append ? st.items.concat(data) : data;
-    st.more = data.length > 0;
+    if (spec.link) {
+      st.next = parseNextMaxId(headers && headers.get('Link'));
+      st.more = !!st.next;
+    } else {
+      st.more = data.length > 0;
+    }
     if (!append) window.scrollTo(0, 0);
   } catch (e) {
     st.error = kind === 'other' && [401, 403, 422].includes(e.status)
@@ -596,6 +853,8 @@ async function loadTrends() {
 }
 
 function currentKind() {
+  const p = activeProfile();
+  if (p) return (p === state.me && state.settingsOpen) ? null : 'p:' + (p.people || p.seg);
   if (state.tab === 'home' || state.tab === 'notifications') return state.tab;
   if (state.tab === 'explore') return state.explore.tag ? 'tag' : state.explore.seg;
   return null;
@@ -604,12 +863,16 @@ function currentKind() {
 function refreshCurrent() {
   const kind = currentKind();
   if (!kind) return;
+  if (kind.startsWith('p:')) loadProfile(activeProfile());
   if (kind === 'trends') loadTrends();
   else loadList(kind);
 }
 
 function selectTab(tab) {
   state.tab = tab;
+  state.profiles = [];
+  state.settingsOpen = false;
+  if (tab === 'account' && !state.me) state.me = mkProfile(session.account);
   document.querySelectorAll('#tabs button').forEach((b) => b.classList.toggle('active', b.dataset.tab === tab));
   $('#fab').hidden = tab === 'account';
   window.scrollTo(0, 0);
@@ -620,6 +883,10 @@ function selectTab(tab) {
     if (!state[tab].items.length && !state[tab].loading) loadList(tab);
   } else if (tab === 'explore') {
     ensureExploreLoaded();
+  } else if (tab === 'account') {
+    if (!state.me) state.me = mkProfile(session.account);
+    if (!state.me.loaded) loadProfile(state.me);
+    ensureProfileLoaded(state.me);
   }
 }
 
@@ -651,7 +918,7 @@ function busy(delta) {
 function bindPullToRefresh() {
   let y0 = null;
   let pull = 0;
-  const canPull = () => state.tab !== 'account' && !$('#composer').open && !$('#app').hidden;
+  const canPull = () => !(state.tab === 'account' && state.settingsOpen) && !$('#composer').open && !$('#app').hidden;
 
   document.addEventListener('touchstart', (e) => {
     y0 = (e.touches.length === 1 && window.scrollY <= 0 && canPull()) ? e.touches[0].clientY : null;
@@ -835,11 +1102,22 @@ function bindUi() {
   document.querySelectorAll('#tabs button').forEach((b) => b.addEventListener('click', () => selectTab(b.dataset.tab)));
   bindPullToRefresh();
   $('#view').addEventListener('click', (e) => {
-    const a = e.target.closest && e.target.closest('a.hashtag');
-    if (!a) return;
+    const el = e.target.closest && e.target.closest('a.mention, a.hashtag');
+    if (!el) return;
+    if (el.classList.contains('hashtag')) {
+      e.preventDefault();
+      const name = (el.textContent || '').replace(/^#/, '').trim();
+      if (name) openTag(name);
+      return;
+    }
+    // menção: abre o perfil dentro do app; sem correspondência, o link segue normal
+    const art = el.closest('.status');
+    const st = art && art._status;
+    const strip = (u) => String(u || '').replace(/\/$/, '');
+    const m = st && (st.mentions || []).find((x) => strip(x.url) === strip(el.href));
+    if (!m) return;
     e.preventDefault();
-    const name = (a.textContent || '').replace(/^#/, '').trim();
-    if (name) openTag(name);
+    openProfileByAcct(art._host && !m.acct.includes('@') ? `${m.acct}@${art._host}` : m.acct);
   });
   $('#fab').addEventListener('click', () => openComposer());
   $('#cancel-compose').addEventListener('click', () => $('#composer').close());
