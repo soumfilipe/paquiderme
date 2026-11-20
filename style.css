@@ -517,3 +517,18 @@ html[data-motion='reduce'] *, html[data-motion='reduce'] *::before, html[data-mo
 .ico.ring { animation: bellring 1s ease-in-out 1; transform-origin: 50% 12%; }
 #tabs button { position: relative; }
 #tabs button.unread::after { content: ''; position: absolute; top: 8px; left: calc(50% + 6px); width: 9px; height: 9px; border-radius: 50%; background: var(--accent); border: 2px solid var(--bg); box-sizing: content-box; }
+
+/* Editar perfil */
+.edit-banner { background-size: cover; background-position: center; }
+.edit-media { padding: 0 16px 8px; display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; margin-top: -40px; }
+.edit-media .profile-avatar { margin: 0; }
+.edit-media-btns { display: flex; gap: 8px; flex-wrap: wrap; }
+.edit-media .muted { flex: 1 1 100%; margin: 0; }
+.edit-form { display: flex; flex-direction: column; gap: 12px; padding: 8px 16px; }
+.edit-field { display: flex; flex-direction: column; gap: 4px; }
+.edit-field textarea { resize: vertical; }
+.edit-pair { display: grid; grid-template-columns: 1fr 1.6fr; gap: 8px; }
+.edit-pair input { min-width: 0; }
+.save-bar { position: sticky; bottom: calc(var(--tabbar-h) + var(--sab) + 8px); padding: 8px 16px; }
+.save-bar button { width: 100%; min-height: 48px; box-shadow: 0 6px 20px rgb(0 0 0 / .3); }
+.profile-bar .edit-save { min-height: 36px; padding: 0 16px; margin-right: 4px; }

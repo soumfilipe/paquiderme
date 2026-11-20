@@ -201,7 +201,7 @@ async function logout({ revoke = true, message = '' } = {}) {
 
 /* ---------- API ---------- */
 
-async function api(path, { method = 'GET', params, body, headers = {}, host, auth = true, onHeaders } = {}) {
+async function api(path, { method = 'GET', params, body, form, headers = {}, host, auth = true, onHeaders } = {}) {
   const target = host || session.host;
   // o token nunca sai da instância do usuário
   if (auth && target !== session.host) throw new Error('Requisição autenticada para outra instância bloqueada.');
@@ -214,7 +214,9 @@ async function api(path, { method = 'GET', params, body, headers = {}, host, aut
   }
   const init = { method, headers: { ...headers } };
   if (auth) init.headers.Authorization = `Bearer ${session.token}`;
-  if (body) {
+  if (form) {
+    init.body = form; // multipart: o navegador define o Content-Type com o boundary
+  } else if (body) {
     init.headers['Content-Type'] = 'application/json';
     init.body = JSON.stringify(body);
   }
@@ -967,6 +969,7 @@ function entryView(view, e) {
   else if (e.type === 'members') membersView(view, e);
   else if (e.type === 'pick') listPickView(view, e);
   else if (e.type === 'accounts') accountsEntryView(view, e);
+  else if (e.type === 'editprofile') editProfileView(view, e);
 }
 
 async function createList(title) {
@@ -1190,6 +1193,168 @@ function listPickView(view, e) {
   });
 }
 
+/* ----- Editar perfil ----- */
+
+// Reduz e recorta ao centro para caber no limite de upload da instância
+async function prepImage(file, w, h2) {
+  const bmp = await createImageBitmap(file, { imageOrientation: 'from-image' });
+  const ratio = w / h2;
+  let sw = bmp.width, sh = bmp.height; // recorte central na proporção alvo
+  if (sw / sh > ratio) sw = Math.round(sh * ratio); else sh = Math.round(sw / ratio);
+  const sx = Math.round((bmp.width - sw) / 2), sy = Math.round((bmp.height - sh) / 2);
+  const cw = Math.min(w, sw), ch = Math.round(cw / ratio); // nunca amplia
+  const cv = document.createElement('canvas');
+  cv.width = cw; cv.height = ch;
+  cv.getContext('2d').drawImage(bmp, sx, sy, sw, sh, 0, 0, cw, ch);
+  const blob = await new Promise((res) => cv.toBlob(res, 'image/jpeg', 0.9));
+  if (!blob) throw new Error('Não consegui processar a imagem.');
+  return blob;
+}
+
+function openEditProfile() {
+  const e = { type: 'editprofile', loaded: false, loading: false, error: null, saving: false, dirty: false, built: false,
+    form: null, avatarBlob: null, headerBlob: null, avatarUrl: null, headerUrl: null, maxFields: 4 };
+  e.reload = null;
+  pushEntry(e);
+  loadEditProfile(e);
+}
+
+async function loadEditProfile(e) {
+  e.loading = true; e.error = null; busy(+1); render();
+  try {
+    const [acct, inst] = await Promise.all([
+      api('/api/v1/accounts/verify_credentials'),
+      api('/api/v2/instance').catch(() => null),
+    ]);
+    const max = inst && inst.configuration && inst.configuration.accounts && inst.configuration.accounts.max_profile_fields;
+    if (max) e.maxFields = max;
+    const src = acct.source || {};
+    e.account = acct;
+    e.form = {
+      display_name: acct.display_name || '',
+      note: src.note != null ? src.note : '',
+      locked: !!acct.locked, bot: !!acct.bot, discoverable: acct.discoverable !== false && !!acct.discoverable,
+      fields: Array.from({ length: e.maxFields }, (_, i) => {
+        const f = (src.fields || acct.fields || [])[i];
+        return { name: (f && f.name) || '', value: (f && (src.fields ? f.value : String(f.value || '').replace(/<[^>]*>/g, ''))) || '' };
+      }),
+    };
+    e.avatarUrl = safeUrl(acct.avatar_static || acct.avatar);
+    e.headerUrl = safeUrl(acct.header_static || acct.header);
+    e.loaded = true;
+  } catch (err) {
+    e.error = err.message;
+  } finally {
+    e.loading = false; busy(-1);
+    e.built = false;
+    if (session && state.profiles.includes(e)) render();
+  }
+}
+
+function closeEditProfile(e) {
+  if (!e.dirty || e.saving) { closeProfile(); return; }
+  openSheet('Descartar alterações do perfil?', [{ label: 'Descartar', danger: true, onclick: () => closeProfile() }]);
+}
+
+async function saveEditProfile(e) {
+  if (e.saving || !e.loaded) return;
+  e.saving = true;
+  const btns = document.querySelectorAll('.edit-save');
+  btns.forEach((b) => { b.disabled = true; b.textContent = 'Salvando…'; });
+  const f = e.form;
+  const fd = new FormData();
+  fd.append('display_name', f.display_name);
+  fd.append('note', f.note);
+  fd.append('locked', String(f.locked));
+  fd.append('bot', String(f.bot));
+  fd.append('discoverable', String(f.discoverable));
+  f.fields.forEach((x, i) => { fd.append(`fields_attributes[${i}][name]`, x.name); fd.append(`fields_attributes[${i}][value]`, x.value); });
+  if (e.avatarBlob) fd.append('avatar', e.avatarBlob, 'avatar.jpg');
+  if (e.headerBlob) fd.append('header', e.headerBlob, 'header.jpg');
+  try {
+    const acct = await api('/api/v1/accounts/update_credentials', { method: 'PATCH', form: fd });
+    session.account = { ...session.account, ...acct };
+    store.set('session', session);
+    [state.me, ...state.profiles].forEach((p) => { if (p && !p.type && p.id === acct.id) { p.account = acct; p.loaded = true; } });
+    e.dirty = false;
+    toast('Perfil atualizado');
+    closeProfile();
+    if (state.me) loadProfile(state.me);
+  } catch (err) {
+    e.saving = false;
+    e.error = err.message;
+    btns.forEach((b) => { b.disabled = false; b.textContent = 'Salvar'; });
+    const box = document.querySelector('#edit-error');
+    if (box) box.textContent = err.message;
+  }
+}
+
+function editProfileView(view, e) {
+  const save = h('button', { type: 'button', class: 'primary edit-save', onclick: () => saveEditProfile(e) }, 'Salvar');
+  view.append(profileBar('Editar perfil', () => closeEditProfile(e), e.loaded ? h('span', { class: 'push-right' }, save) : null));
+  if (e.error && !e.loaded) { view.append(h('div', { class: 'empty' }, h('p', { class: 'error' }, e.error), h('button', { type: 'button', onclick: () => loadEditProfile(e) }, 'Tentar de novo'))); return; }
+  if (!e.loaded) { view.append(h('p', { class: 'empty' }, 'Carregando…')); return; }
+  const f = e.form;
+  const touch = () => { e.dirty = true; };
+
+  // capa e avatar
+  const header = h('div', { class: 'banner edit-banner', style: e.headerUrl && !/missing\.png/.test(e.headerUrl) ? `background-image:url("${e.headerUrl}")` : null });
+  const avatar = h('img', { class: 'profile-avatar', src: e.avatarUrl, alt: 'Foto atual' });
+  const pick = (label, kind, w, hh, target, field) => {
+    const input = h('input', { type: 'file', accept: 'image/*', hidden: true, 'aria-label': label });
+    input.addEventListener('change', async () => {
+      const file = input.files && input.files[0];
+      if (!file) return;
+      try {
+        const blob = await prepImage(file, w, hh);
+        e[kind + 'Blob'] = blob;
+        const url = URL.createObjectURL(blob);
+        if (kind === 'avatar') avatar.src = url; else header.style.backgroundImage = `url("${url}")`;
+        touch();
+      } catch (err) { toast(err.message); }
+      input.value = '';
+    });
+    return h('span', {}, input, h('button', { type: 'button', onclick: () => input.click() }, label));
+  };
+  view.append(header);
+  view.append(h('div', { class: 'edit-media' }, avatar, h('div', { class: 'edit-media-btns' },
+    pick('Trocar foto', 'avatar', 400, 400), pick('Trocar capa', 'header', 1500, 500)),
+    h('p', { class: 'muted small' }, 'As imagens são reduzidas e recortadas ao centro (foto quadrada, capa 3:1).')));
+
+  const field = (label, el) => h('label', { class: 'edit-field' }, h('span', { class: 'muted small' }, label), el);
+  const name = h('input', { value: f.display_name, maxlength: '30', autocomplete: 'off' });
+  name.addEventListener('input', () => { f.display_name = name.value; touch(); });
+  const note = h('textarea', { rows: '6', maxlength: '500' }, f.note);
+  note.addEventListener('input', () => { f.note = note.value; touch(); });
+  view.append(h('div', { class: 'edit-form' },
+    field('Nome', name),
+    field('Bio', note),
+    h('strong', {}, 'Campos do perfil'),
+    ...f.fields.map((x, i) => {
+      const n = h('input', { value: x.name, placeholder: 'Rótulo (ex.: Site)', maxlength: '255', 'aria-label': `Campo ${i + 1}: rótulo` });
+      const v = h('input', { value: x.value, placeholder: 'Conteúdo (ex.: https://…)', maxlength: '255', autocapitalize: 'none', 'aria-label': `Campo ${i + 1}: conteúdo` });
+      n.addEventListener('input', () => { x.name = n.value; touch(); });
+      v.addEventListener('input', () => { x.value = v.value; touch(); });
+      return h('div', { class: 'edit-pair' }, n, v);
+    })));
+  const sw = (label, key) => {
+    const b = h('button', { type: 'button', class: `pick-row${f[key] ? ' on' : ''}`, role: 'switch', 'aria-checked': f[key] ? 'true' : 'false' },
+      h('span', { class: 'pick-box' }, f[key] ? svgIcon('check', 16) : null), label);
+    b.addEventListener('click', () => {
+      f[key] = !f[key]; touch();
+      b.classList.toggle('on', f[key]); b.setAttribute('aria-checked', f[key] ? 'true' : 'false');
+      b.querySelector('.pick-box').replaceChildren(...(f[key] ? [svgIcon('check', 16)] : []));
+    });
+    return b;
+  };
+  view.append(sw('Perfil fechado (aprovar quem pode me seguir)', 'locked'));
+  view.append(sw('Conta automatizada (robô)', 'bot'));
+  view.append(sw('Aparecer no diretório e nas sugestões', 'discoverable'));
+  view.append(h('p', { id: 'edit-error', class: 'error', role: 'alert' }, e.error || ''));
+  view.append(h('div', { class: 'save-bar' }, h('button', { type: 'button', class: 'primary edit-save', onclick: () => saveEditProfile(e) }, 'Salvar')));
+  e.built = true;
+}
+
 /* ----- Perfis ----- */
 
 const fmtCount = (n) => new Intl.NumberFormat('pt-BR', { notation: 'compact', maximumFractionDigits: 1 }).format(Number(n) || 0);
@@ -1398,7 +1563,7 @@ function profileView(view, p) {
   view.append(hdr && !/missing\.png/.test(hdr) ? h('img', { class: 'banner', src: hdr, alt: '' }) : h('div', { class: 'banner' }));
 
   const actions = self
-    ? h('a', { class: 'btn-link', href: `https://${session.host}/settings/profile`, target: '_blank', rel: 'noopener noreferrer' }, 'Editar')
+    ? h('button', { type: 'button', onclick: openEditProfile }, 'Editar')
     : h('div', { class: 'profile-actions' },
       p.rel && p.rel.following ? h('button', { type: 'button', onclick: () => openListPicker(a) }, 'Listas') : null,
       followBtn(p),
@@ -1664,6 +1829,9 @@ function ensureExploreLoaded() {
 function render() {
   const view = $('#view');
   const y = window.scrollY;
+  const top0 = topEntry();
+  // não reconstrói o formulário de edição enquanto a pessoa digita (perderia o foco e o teclado)
+  if (top0 && top0.type === 'editprofile' && top0.built && view.contains(document.activeElement) && document.activeElement.matches('input, textarea')) return;
   view.replaceChildren();
   const top = topEntry();
   const prof = activeProfile();
