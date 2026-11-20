@@ -2281,6 +2281,7 @@ function openComposer({ replyTo = null, edit = null } = {}) {
   updateCount();
   $('#composer').showModal();
   fitComposer();
+  fitText();
   const t = $('#text');
   if (!edit) { t.focus(); t.setSelectionRange(t.value.length, t.value.length); }
 }
@@ -2306,8 +2307,10 @@ function renderComposeExtras() {
   $('#poll-btn').setAttribute('aria-pressed', compose.poll ? 'true' : 'false');
   renderPollEditor();
   const l = LANGS.find(([c]) => c === compose.lang);
-  $('#lang-btn').textContent = compose.lang ? compose.lang.toUpperCase() : 'Idioma';
-  $('#lang-btn').title = l ? l[1] : compose.lang;
+  const lb = $('#lang-btn');
+  lb.replaceChildren(...[svgIcon('language', 22), compose.lang ? h('span', { class: 'tool-badge' }, compose.lang.toUpperCase()) : null].filter(Boolean));
+  lb.setAttribute('aria-pressed', compose.lang ? 'true' : 'false');
+  lb.title = l ? l[1] : compose.lang;
 }
 
 function renderPollEditor() {
@@ -2406,8 +2409,15 @@ function langSheet() {
   })));
 }
 
+function fitText() {
+  const t = $('#text');
+  t.style.height = 'auto';
+  t.style.height = `${Math.max(140, t.scrollHeight + 2)}px`; // cresce com o texto; quem rola é o corpo do formulário
+}
+
 function updateCount() {
   const t = $('#text');
+  fitText();
   $('#count').textContent = `${t.value.length}/${t.maxLength}`;
 }
 
@@ -2452,7 +2462,8 @@ function bindComposerSwipe() {
     if (!$('#composer').open) return;
     const ta = e.target.closest && e.target.closest('#text');
     if (ta && ta.scrollHeight > ta.clientHeight) return;
-    if (e.target.closest && e.target.closest('#compose-media, #compose-poll')) return;
+    const cb = e.target.closest && e.target.closest('#compose-body');
+    if (cb && cb.scrollHeight > cb.clientHeight) return;
     e.preventDefault();
   }, { passive: false });
   const dlg = $('#composer');
