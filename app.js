@@ -23,7 +23,21 @@ const store = {
   del(k) { try { localStorage.removeItem('pq.' + k); } catch { /* ignora */ } },
 };
 
-let session = null; // { host, token, account }
+let session = null; // { host, token, account } — conta ativa
+let appStarted = false;
+
+// Várias contas: 'sessions' guarda todas; 'session' é a ativa
+const sessions = () => store.get('sessions', []);
+const sameAcc = (x, y) => x.host === y.host && x.account.id === y.account.id;
+function persistSession() {
+  store.set('session', session);
+  const l = sessions();
+  const i = l.findIndex((x) => sameAcc(x, session));
+  if (i >= 0) l[i] = session; else l.push(session);
+  store.set('sessions', l);
+}
+const seenKey = () => `seenNotif.${session.host}.${session.account.id}`;
+const scrollKey = (kind) => `scroll.${session.host}.${session.account.id}.${kind}`;
 
 const mkSearch = () => ({ q: '', type: '', res: null, loading: false, error: null, more: false });
 const mkList = () => ({ items: [], more: true, loading: false, error: null });
@@ -65,12 +79,17 @@ function toast(msg) {
 
 /* ---------- Login (OAuth com PKCE) ---------- */
 
-function showLogin(message = '') {
+function showLogin(message = '', { add = false } = {}) {
   $('#app').hidden = true;
   $('#login').hidden = false;
   $('#login-error').textContent = message;
+  const has = sessions().length > 0;
+  $('#login-cancel').hidden = !has;
+  $('#login-add-note').hidden = !(add || has);
   const last = store.get('lastHost');
-  if (last) $('#instance').value = last;
+  if (add) $('#instance').value = '';
+  else if (last) $('#instance').value = last;
+  if (add) $('#instance').focus();
 }
 
 function showApp() {
@@ -159,7 +178,7 @@ async function finishLogin(code, pending, redirectUri) {
     token: tok.access_token,
     account: { id: a.id, acct: a.acct, username: a.username, display_name: a.display_name, avatar: a.avatar_static || a.avatar, url: a.url, emojis: a.emojis },
   };
-  store.set('session', session);
+  persistSession();
   store.del('pending');
 }
 
@@ -181,21 +200,40 @@ async function handleCallback(params) {
   }
 }
 
+function activate(s) {
+  saveScroll();
+  session = s;
+  store.set('session', s);
+  state = mkState();
+  Object.assign(pushState, { loading: false, supported: false, standalone: false, sub: null, error: null, loaded: false });
+  setUnread(false);
+  appStarted = false;
+  try { $('#sheet').close(); } catch { /* ignora */ }
+  $('#view').replaceChildren();
+  window.scrollTo(0, 0);
+  startApp();
+}
+
+// Sai da conta ativa; se houver outra, passa para ela
 async function logout({ revoke = true, message = '' } = {}) {
-  if (session && revoke) {
-    const app = store.get('app.' + session.host);
+  const gone = session;
+  if (gone && revoke) {
+    const app = store.get('app.' + gone.host);
     if (app) {
       try {
-        await postForm(`https://${session.host}/oauth/revoke`, {
-          client_id: app.client_id, client_secret: app.client_secret, token: session.token,
+        await postForm(`https://${gone.host}/oauth/revoke`, {
+          client_id: app.client_id, client_secret: app.client_secret, token: gone.token,
         });
       } catch { /* segue mesmo se falhar */ }
     }
   }
-  clearCaches();
+  if (gone) clearCaches(gone);
   store.del('session');
   session = null;
+  if (gone) store.set('sessions', sessions().filter((x) => !sameAcc(x, gone)));
+  const next = sessions()[0];
   state = mkState();
+  if (next) { activate(next); if (message) toast(message); return; }
   showLogin(message);
 }
 
@@ -473,8 +511,24 @@ function mediaEl(sh) {
   return wrap;
 }
 
+// Filtros do servidor: publicações que casam com um filtro viram um aviso recolhido
+const revealed = new Set();
+function filterHits(s) {
+  const sh = s.reblog || s;
+  const list = (s.filtered && s.filtered.length ? s.filtered : sh.filtered) || [];
+  return list.map((x) => x.filter).filter(Boolean);
+}
+
 function statusEl(s, { readonly = false, host = null } = {}) {
   const sh = s.reblog || s;
+  const hits = revealed.has(sh.id) ? [] : filterHits(s);
+  if (hits.length) {
+    const names = [...new Set(hits.map((f) => f.title))].join(', ');
+    const ph = h('article', { class: 'status filtered', 'data-id': sh.id },
+      h('span', { class: 'muted' }, `Filtrado: ${names}`),
+      h('button', { type: 'button', class: 'link', onclick: () => { revealed.add(sh.id); ph.replaceWith(statusEl(s, { readonly, host })); } }, 'Mostrar'));
+    return ph;
+  }
   const a = sh.account;
   const el = h('article', { class: 'status', 'data-id': sh.id });
   el._status = sh;
@@ -664,16 +718,17 @@ function hydrateFromCache(kind) {
   return true;
 }
 
-function clearCaches() {
+function clearCaches(s) {
+  const pre = s ? [`pq.cache.${s.host}.${s.account.id}.`, `pq.scroll.${s.host}.${s.account.id}.`] : ['pq.cache.', 'pq.scroll.'];
   try {
-    Object.keys(localStorage).filter((k) => k.startsWith('pq.cache.') || k.startsWith('pq.scroll.')).forEach((k) => localStorage.removeItem(k));
+    Object.keys(localStorage).filter((k) => pre.some((p) => k.startsWith(p))).forEach((k) => localStorage.removeItem(k));
   } catch { /* ignora */ }
 }
 
 function saveScroll() {
   if (!session || state.profiles.length) return;
   const kind = state.tab === 'home' && !state.homeList ? 'home' : state.tab === 'notifications' ? 'notifications' : null;
-  if (kind) store.set(`scroll.${kind}`, Math.round(window.scrollY));
+  if (kind) store.set(scrollKey(kind), Math.round(window.scrollY));
 }
 
 // Traz publicações novas por cima do que está guardado, sem mexer onde o usuário está lendo
@@ -918,8 +973,8 @@ async function checkUnread() {
     const newest = latest[0] && latest[0].id;
     if (!newest) { setUnread(false); return; }
     const marker = m && m.notifications && m.notifications.last_read_id;
-    const local = store.get('seenNotif');
-    if (!marker && !local) { store.set('seenNotif', newest); setUnread(false); return; } // primeira vez: não toca por avisos antigos
+    const local = store.get(seenKey());
+    if (!marker && !local) { store.set(seenKey(), newest); setUnread(false); return; } // primeira vez: não toca por avisos antigos
     const seen = [marker, local].filter(Boolean).reduce((x, y) => (idGt(x, y) ? x : y));
     const unread = idGt(newest, seen);
     setUnread(unread);
@@ -931,7 +986,7 @@ function markNotificationsRead() {
   const newest = state.notifications.items[0] && state.notifications.items[0].id;
   setUnread(false);
   if (!newest) return;
-  store.set('seenNotif', newest);
+  store.set(seenKey(), newest);
   api('/api/v1/markers', { method: 'POST', body: { notifications: { last_read_id: newest } } }).catch(() => {});
 }
 
@@ -1147,6 +1202,8 @@ function entryView(view, e) {
   else if (e.type === 'pick') listPickView(view, e);
   else if (e.type === 'accounts') accountsEntryView(view, e);
   else if (e.type === 'editprofile') editProfileView(view, e);
+  else if (e.type === 'filters') filtersView(view, e);
+  else if (e.type === 'filteredit') filterEditView(view, e);
 }
 
 async function createList(title) {
@@ -1370,6 +1427,132 @@ function listPickView(view, e) {
   });
 }
 
+/* ----- Filtros ----- */
+
+const FILTER_CTX = [['home', 'Início'], ['notifications', 'Avisos'], ['public', 'Públicas'], ['thread', 'Conversas'], ['account', 'Perfis']];
+const FILTER_EXP = [['', 'Nunca'], [86400, '1 dia'], [604800, '1 semana'], [2592000, '30 dias']];
+const ctxLabel = (c) => (FILTER_CTX.find((x) => x[0] === c) || [c, c])[1];
+
+function openFilters() {
+  const e = { type: 'filters', items: [], loaded: false, loading: false, error: null, confirm: null };
+  e.reload = () => loadFilters(e);
+  pushEntry(e);
+  loadFilters(e);
+}
+
+async function loadFilters(e) {
+  e.loading = true; e.error = null; busy(+1); render();
+  try {
+    e.items = await api('/api/v2/filters');
+    e.loaded = true;
+  } catch (err) { e.error = err.message; } finally {
+    e.loading = false; busy(-1);
+    if (session && state.profiles.includes(e)) render();
+  }
+}
+
+function filtersView(view, e) {
+  view.append(profileBar('Filtros', closeProfile));
+  view.append(h('p', { class: 'muted small filters-note' }, 'Filtros ficam na sua conta da instância e valem em qualquer app. Publicações que casarem aparecem recolhidas, com um botão para mostrar.'));
+  view.append(h('button', { type: 'button', class: 'with-icon primary add-filter', onclick: () => openFilterEdit(e, null) }, svgIcon('add', 18), 'Novo filtro'));
+  if (e.error) { view.append(h('div', { class: 'empty' }, h('p', { class: 'error' }, e.error), h('button', { type: 'button', onclick: () => e.reload() }, 'Tentar de novo'))); return; }
+  if (!e.loaded) { view.append(h('p', { class: 'empty' }, 'Carregando…')); return; }
+  if (!e.items.length) { view.append(h('p', { class: 'empty' }, 'Nenhum filtro ainda.')); return; }
+  e.items.forEach((f) => {
+    const confirming = e.confirm === f.id;
+    const kw = (f.keywords || []).map((k) => k.keyword).join(', ');
+    const meta = [`${(f.context || []).map(ctxLabel).join(', ') || 'sem contexto'}`, f.filter_action === 'hide' ? 'oculta' : 'recolhe',
+      f.expires_at ? `até ${new Date(f.expires_at).toLocaleDateString('pt-BR')}` : null].filter(Boolean).join(' · ');
+    view.append(h('div', { class: 'filter-row' },
+      h('div', { class: 'filter-info' }, h('strong', {}, f.title), h('span', { class: 'muted small' }, kw || 'sem palavras'), h('span', { class: 'muted small' }, meta)),
+      h('div', { class: 'filter-actions' },
+        h('button', { type: 'button', onclick: () => openFilterEdit(e, f) }, 'Editar'),
+        h('button', { type: 'button', class: confirming ? 'danger' : '', onclick: async () => {
+          if (!confirming) { e.confirm = f.id; render(); setTimeout(() => { if (e.confirm === f.id) { e.confirm = null; if (topEntry() === e) render(); } }, 4000); return; }
+          try {
+            await api(`/api/v2/filters/${f.id}`, { method: 'DELETE' });
+            e.items = e.items.filter((x) => x.id !== f.id); e.confirm = null; render();
+          } catch (err) { toast(err.message); }
+        } }, confirming ? 'Confirmar' : 'Excluir'))));
+  });
+}
+
+function openFilterEdit(parent, f) {
+  const e = { type: 'filteredit', parent, filter: f, built: false, saving: false, error: '',
+    form: {
+      title: f ? f.title : '',
+      words: f ? (f.keywords || []).map((k) => k.keyword).join('\n') : '',
+      whole: f ? (f.keywords || []).every((k) => k.whole_word) && (f.keywords || []).length > 0 : true,
+      context: new Set(f ? f.context : ['home', 'notifications', 'public', 'thread']),
+      action: f && f.filter_action === 'hide' ? 'hide' : 'warn',
+      exp: undefined, // undefined = manter o que já existe
+    } };
+  pushEntry(e);
+}
+
+function filterEditView(view, e) {
+  const f = e.form;
+  view.append(profileBar(e.filter ? 'Editar filtro' : 'Novo filtro', closeProfile));
+  const title = h('input', { value: f.title, maxlength: '100', placeholder: 'Ex.: Spoilers', autocomplete: 'off' });
+  title.addEventListener('input', () => { f.title = title.value; });
+  const words = h('textarea', { rows: '5', placeholder: 'Uma palavra ou frase por linha', autocapitalize: 'none', spellcheck: 'false' }, f.words);
+  words.addEventListener('input', () => { f.words = words.value; });
+  const field = (label, el) => h('label', { class: 'edit-field' }, h('span', { class: 'muted small' }, label), el);
+  const chips = (items, isOn, onTap) => h('div', { class: 'cp-row' }, ...items.map(([val, label]) => {
+    const b = h('button', { type: 'button', class: `chip${isOn(val) ? ' active' : ''}`, 'aria-pressed': isOn(val) ? 'true' : 'false' }, label);
+    b.addEventListener('click', () => { onTap(val); b.parentElement.querySelectorAll('.chip').forEach((c, i) => { const on = isOn(items[i][0]); c.classList.toggle('active', on); c.setAttribute('aria-pressed', on ? 'true' : 'false'); }); });
+    return b;
+  }));
+  const whole = h('button', { type: 'button', class: `pick-row${f.whole ? ' on' : ''}`, role: 'switch', 'aria-checked': f.whole ? 'true' : 'false' },
+    h('span', { class: 'pick-box' }, f.whole ? svgIcon('check', 16) : null), 'Só palavras inteiras');
+  whole.addEventListener('click', () => {
+    f.whole = !f.whole; whole.classList.toggle('on', f.whole); whole.setAttribute('aria-checked', String(f.whole));
+    whole.querySelector('.pick-box').replaceChildren(...(f.whole ? [svgIcon('check', 16)] : []));
+  });
+  const expItems = [...(e.filter && e.filter.expires_at ? [['keep', `Manter (${new Date(e.filter.expires_at).toLocaleDateString('pt-BR')})`]] : []), ...FILTER_EXP];
+  const expOn = (v) => (f.exp === undefined ? v === (e.filter && e.filter.expires_at ? 'keep' : '') : f.exp === v);
+  view.append(h('div', { class: 'edit-form' },
+    field('Nome do filtro', title),
+    field('Palavras ou frases', words),
+    whole,
+    h('strong', {}, 'Onde vale'),
+    chips(FILTER_CTX, (c) => f.context.has(c), (c) => { if (f.context.has(c)) f.context.delete(c); else f.context.add(c); }),
+    h('strong', {}, 'O que fazer'),
+    chips([['warn', 'Recolher com aviso'], ['hide', 'Ocultar']], (v) => f.action === v, (v) => { f.action = v; }),
+    h('strong', {}, 'Duração'),
+    chips(expItems, expOn, (v) => { f.exp = v === 'keep' ? undefined : v; })));
+  view.append(h('p', { id: 'filter-error', class: 'error', role: 'alert' }, e.error || ''));
+  view.append(h('div', { class: 'save-bar' }, h('button', { type: 'button', class: 'primary edit-save', onclick: () => saveFilter(e) }, 'Salvar')));
+  e.built = true;
+}
+
+async function saveFilter(e) {
+  const f = e.form;
+  const err = $('#filter-error');
+  const list = [...new Set(f.words.split('\n').map((x) => x.trim()).filter(Boolean))];
+  if (!f.title.trim()) { err.textContent = 'Dê um nome ao filtro.'; return; }
+  if (!list.length) { err.textContent = 'Inclua pelo menos uma palavra.'; return; }
+  if (!f.context.size) { err.textContent = 'Escolha onde o filtro vale.'; return; }
+  err.textContent = '';
+  const body = { title: f.title.trim(), context: [...f.context], filter_action: f.action };
+  if (f.exp !== undefined) body.expires_in = f.exp;
+  const old = e.filter ? e.filter.keywords || [] : [];
+  const attrs = [];
+  old.forEach((k) => { if (!list.includes(k.keyword)) attrs.push({ id: k.id, _destroy: true }); else if (k.whole_word !== f.whole) attrs.push({ id: k.id, keyword: k.keyword, whole_word: f.whole }); });
+  list.forEach((w) => { if (!old.some((k) => k.keyword === w)) attrs.push({ keyword: w, whole_word: f.whole }); });
+  body.keywords_attributes = attrs;
+  const btn = $('.edit-save'); btn.disabled = true; btn.textContent = 'Salvando…';
+  try {
+    if (e.filter) await api(`/api/v2/filters/${e.filter.id}`, { method: 'PUT', body });
+    else await api('/api/v2/filters', { method: 'POST', body });
+    toast('Filtro salvo');
+    closeProfile();
+    e.parent.reload();
+  } catch (ex) {
+    e.error = ex.message; err.textContent = ex.message; btn.disabled = false; btn.textContent = 'Salvar';
+  }
+}
+
 /* ----- Editar perfil ----- */
 
 // Reduz e recorta ao centro para caber no limite de upload da instância
@@ -1451,7 +1634,7 @@ async function saveEditProfile(e) {
   try {
     const acct = await api('/api/v1/accounts/update_credentials', { method: 'PATCH', form: fd });
     session.account = { ...session.account, ...acct };
-    store.set('session', session);
+    persistSession();
     [state.me, ...state.profiles].forEach((p) => { if (p && !p.type && p.id === acct.id) { p.account = acct; p.loaded = true; } });
     e.dirty = false;
     toast('Perfil atualizado');
@@ -1703,18 +1886,60 @@ function profileBar(title, onBack, extra) {
     extra);
 }
 
+function accountRowEl(s) {
+  const active = session && sameAcc(s, session);
+  const acc = s.account;
+  return h('button', { type: 'button', class: `acc-row${active ? ' active' : ''}`, 'aria-current': active ? 'true' : null,
+    onclick: () => { if (active) { $('#sheet').close(); return; } activate(s); } },
+    h('img', { class: 'avatar', src: safeUrl(acc.avatar), alt: '' }),
+    h('span', { class: 'acc-info' },
+      h('strong', {}, nameNode(acc)),
+      h('span', { class: 'muted small' }, `@${acc.acct}@${s.host}`)),
+    active ? svgIcon('check', 18) : null);
+}
+
+function addAccount() {
+  try { $('#sheet').close(); } catch { /* ignora */ }
+  state.settingsOpen = false;
+  showLogin('', { add: true });
+}
+
+function accountsSheet() {
+  openSheet('Contas', [
+    { label: 'Adicionar conta', icon: 'user-add', onclick: addAccount },
+  ], h('div', { class: 'acc-list' }, ...sessions().map(accountRowEl)));
+}
+
+function shareSection() {
+  const base = `${APP_URL}?text=`;
+  return h('div', { class: 'account-card' },
+    h('strong', {}, 'Compartilhar para o Paquiderme'),
+    h('p', { class: 'muted small' }, 'No Android, instalado o app, ele aparece no menu Compartilhar. No iPhone o sistema ainda não permite isso a apps da tela de início; dá para usar um atalho do app Atalhos:'),
+    h('ol', { class: 'muted small share-steps' },
+      h('li', {}, 'No Atalhos, crie um atalho novo e ative “Mostrar na Folha de Compartilhamento”.'),
+      h('li', {}, 'Adicione a ação “Codificar URL” (entrada: Entrada do Atalho) e depois “Abrir URLs”.'),
+      h('li', {}, 'Na URL, use o endereço abaixo seguido do resultado da codificação.')),
+    h('code', { class: 'share-url' }, base),
+    h('button', { type: 'button', class: 'with-icon', onclick: async () => { try { await navigator.clipboard.writeText(base); toast('Endereço copiado'); } catch { toast('Não consegui copiar'); } } }, svgIcon('copy', 18), 'Copiar endereço'),
+    h('p', { class: 'muted small' }, 'Atenção: no iPhone “Abrir URLs” abre o Safari, não o app instalado. Nesse caso o login do Safari é separado do app.'));
+}
+
 function settingsView(view) {
   view.append(profileBar('Configurações', () => { state.settingsOpen = false; window.scrollTo(0, 0); render(); }));
   view.append(h('div', { class: 'account-card' },
-    h('div', { class: 'muted' }, `Conectado como @${session.account.acct}@${session.host}`),
+    h('strong', {}, 'Contas'),
+    h('div', { class: 'acc-list' }, ...sessions().map(accountRowEl)),
+    h('button', { type: 'button', class: 'with-icon', onclick: addAccount }, svgIcon('user-add', 18), 'Adicionar conta'),
     h('a', { href: `https://${session.host}/settings/profile`, target: '_blank', rel: 'noopener noreferrer' }, 'Editar perfil e preferências na instância'),
     h('button', { type: 'button', class: 'with-icon', onclick: updateApp }, svgIcon('refresh', 18), 'Atualizar o app (limpar cache)'),
-    h('button', { type: 'button', class: 'with-icon', onclick: () => logout() }, svgIcon('logout', 18), 'Sair'),
+    h('button', { type: 'button', class: 'with-icon', onclick: () => logout() }, svgIcon('logout', 18), sessions().length > 1 ? 'Sair desta conta' : 'Sair'),
     h('p', { class: 'muted small' }, `${APP_NAME} · cliente estático, sem servidor próprio. O token fica só neste aparelho.`)));
   view.append(prefsSection());
   view.append(pushSection());
+  view.append(shareSection());
   view.append(h('div', { class: 'account-card' },
     h('strong', {}, 'Moderação pessoal'),
+    h('button', { type: 'button', class: 'with-icon', onclick: openFilters }, svgIcon('filter', 18), 'Filtros de palavras'),
     h('button', { type: 'button', class: 'with-icon', onclick: () => openAccountsEntry('Contas silenciadas', '/api/v1/mutes', 'unmute', 'Reativar') }, svgIcon('mute', 18), 'Contas silenciadas'),
     h('button', { type: 'button', class: 'with-icon', onclick: () => openAccountsEntry('Contas bloqueadas', '/api/v1/blocks', 'unblock', 'Desbloquear') }, svgIcon('block', 18), 'Contas bloqueadas')));
 }
@@ -1732,7 +1957,9 @@ function profileView(view, p) {
   const a = p.account;
   const self = a.id === session.account.id;
   const gear = isRoot
-    ? h('button', { type: 'button', class: 'icon-btn push-right', 'aria-label': 'Configurações do app', onclick: () => { state.settingsOpen = true; window.scrollTo(0, 0); render(); loadPush(); } }, svgIcon('settings', 22))
+    ? h('span', { class: 'push-right bar-actions' },
+      h('button', { type: 'button', class: 'icon-btn', 'aria-label': 'Trocar de conta', onclick: accountsSheet }, svgIcon('users', 22)),
+      h('button', { type: 'button', class: 'icon-btn', 'aria-label': 'Configurações do app', onclick: () => { state.settingsOpen = true; window.scrollTo(0, 0); render(); loadPush(); } }, svgIcon('settings', 22)))
     : null;
   view.append(profileBar(nameNode(a), isRoot ? null : closeProfile, gear));
 
@@ -2008,7 +2235,7 @@ function render() {
   const y = window.scrollY;
   const top0 = topEntry();
   // não reconstrói o formulário de edição enquanto a pessoa digita (perderia o foco e o teclado)
-  if (top0 && top0.type === 'editprofile' && top0.built && view.contains(document.activeElement) && document.activeElement.matches('input, textarea')) return;
+  if (top0 && (top0.type === 'editprofile' || top0.type === 'filteredit') && top0.built && view.contains(document.activeElement) && document.activeElement.matches('input, textarea')) return;
   view.replaceChildren();
   const top = topEntry();
   const prof = activeProfile();
@@ -2145,10 +2372,10 @@ function selectTab(tab) {
   if (tab === 'home') {
     if (!state.lists.loaded) loadLists(true);
     const k = state.homeList ? 'list' : 'home';
-    if (k === 'home' && hydrateFromCache('home')) { render(); window.scrollTo(0, store.get('scroll.home', 0)); refreshWithCache('home'); }
+    if (k === 'home' && hydrateFromCache('home')) { render(); window.scrollTo(0, store.get(scrollKey('home'), 0)); refreshWithCache('home'); }
     else if (!getList(k).items.length && !getList(k).loading) loadList(k);
   } else if (tab === 'notifications') {
-    if (hydrateFromCache('notifications')) { render(); window.scrollTo(0, store.get('scroll.notifications', 0)); refreshWithCache('notifications'); }
+    if (hydrateFromCache('notifications')) { render(); window.scrollTo(0, store.get(scrollKey('notifications'), 0)); refreshWithCache('notifications'); }
     else if (!state[tab].items.length && !state[tab].loading) loadList(tab);
   } else if (tab === 'explore') {
     ensureExploreLoaded();
@@ -2234,7 +2461,7 @@ function saveDraft() {
   store.set('draft', { text: $('#text').value, cw: cw.hidden ? '' : cw.value, poll: compose.poll, lang: compose.lang });
 }
 
-function openComposer({ replyTo = null, edit = null } = {}) {
+function openComposer({ replyTo = null, edit = null, share = '' } = {}) {
   compose.media.forEach((m) => m.preview && m.preview.startsWith('blob:') && URL.revokeObjectURL(m.preview));
   compose = mkCompose();
   compose.replyTo = replyTo;
@@ -2277,6 +2504,7 @@ function openComposer({ replyTo = null, edit = null } = {}) {
     if (d && d.lang != null) compose.lang = d.lang;
     setVisibility(prefs.defaultVis || store.get('lastVisibility', 'public'));
     note.hidden = true;
+    if (share) { const cur = $('#text').value.trimEnd(); $('#text').value = cur ? `${cur}\n\n${share}` : share; saveDraft(); }
   }
   renderComposeExtras();
   updateCount();
@@ -2611,12 +2839,15 @@ async function updateApp() {
 }
 
 async function startApp() {
+  appStarted = true;
   showApp();
   // aberto pelo toque numa notificação push
   const go = new URL(location.href).searchParams.get('go');
   if (go) history.replaceState(null, '', location.pathname);
   selectTab(go === 'notifications' ? 'notifications' : 'home');
   checkUnread();
+  const shared = store.get('share');
+  if (shared) { store.del('share'); openComposer({ share: shared }); }
   try {
     const res = await fetch(`https://${session.host}/api/v2/instance`);
     const cfg = (await res.json())?.configuration || {};
@@ -2630,6 +2861,7 @@ function bindUi() {
   hydrateIcons();
   $('#login-form').addEventListener('submit', (e) => { e.preventDefault(); startLogin(false); });
   $('#manual-start').addEventListener('click', () => startLogin(true));
+  $('#login-cancel').addEventListener('click', () => { if (!session) return; showApp(); if (!appStarted) startApp(); });
   $('#manual-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     const err = $('#login-error');
@@ -2716,14 +2948,29 @@ function bindUi() {
   $('#sens-btn').addEventListener('click', () => { compose.sensitive = !compose.sensitive; renderComposeExtras(); });
 }
 
+// Recebe texto/link de outros apps: ?text=…&url=…&title=… (Android via share_target; iOS via Atalhos)
+function sharedText(params) {
+  if (params.has('code') || params.has('error')) return '';
+  const title = (params.get('title') || '').trim();
+  const text = (params.get('text') || '').trim();
+  const url = (params.get('url') || '').trim();
+  const out = [];
+  if (title && title !== text && !text.includes(title)) out.push(title);
+  if (text) out.push(text);
+  if (url && !text.includes(url)) out.push(url);
+  return out.join('\n').slice(0, 5000);
+}
+
 async function boot() {
   applyPrefs();
   bindUi();
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
   const params = new URLSearchParams(location.search);
+  const shared = sharedText(params);
+  if (shared) { store.set('share', shared); ['title', 'text', 'url'].forEach((k) => params.delete(k)); history.replaceState(null, '', location.pathname + (params.toString() ? `?${params}` : '')); }
   if (params.has('code') || params.has('error')) await handleCallback(params);
   session = session || store.get('session');
-  if (session && session.token) startApp();
+  if (session && session.token) { persistSession(); startApp(); }
   else showLogin($('#login-error').textContent);
 }
 
