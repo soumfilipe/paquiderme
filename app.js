@@ -458,12 +458,19 @@ function threadView(view, t) {
   };
   t.ancestors.forEach((s) => view.append(item('ancestor', s)));
   view.append(item('focal', t.status));
-  const depth = new Map([[t.status.id, 0]]);
+  // A API não garante a ordem em árvore: monta a árvore pelas respostas (in_reply_to_id) e percorre em profundidade.
+  const kids = new Map();
+  const ids = new Set(t.descendants.map((s) => s.id));
+  ids.add(t.status.id);
   t.descendants.forEach((s) => {
-    const d = (depth.get(s.in_reply_to_id) ?? 0) + 1;
-    depth.set(s.id, d);
-    view.append(item('reply', s, d));
+    const parent = ids.has(s.in_reply_to_id) ? s.in_reply_to_id : t.status.id; // órfãs ficam ligadas à publicação em foco
+    if (!kids.has(parent)) kids.set(parent, []);
+    kids.get(parent).push(s);
   });
+  const byDate = (x, y) => (x.created_at < y.created_at ? -1 : x.created_at > y.created_at ? 1 : 0);
+  kids.forEach((list) => list.sort(byDate));
+  const walk = (id, d) => (kids.get(id) || []).forEach((s) => { view.append(item('reply', s, d)); walk(s.id, d + 1); });
+  walk(t.status.id, 1);
   if (t.loading) view.append(h('p', { class: 'empty' }, 'Carregando conversa…'));
   else if (t.error) {
     view.append(h('div', { class: 'empty' }, h('p', { class: 'error' }, t.error),
