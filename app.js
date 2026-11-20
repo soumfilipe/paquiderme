@@ -719,7 +719,8 @@ function openViewer(items, start = 0) {
   const track = h('div', { class: 'v-track' });
   const counter = h('span', { class: 'v-counter' });
   const alt = h('div', { class: 'v-alt', hidden: true });
-  const altBtn = h('button', { type: 'button', class: 'v-alt-btn', onclick: () => { alt.hidden = !alt.hidden; } }, 'ALT');
+  const bottom = h('div', { class: 'v-bottom' });
+  const altBtn = h('button', { type: 'button', class: 'v-alt-btn', onclick: () => { alt.hidden = !alt.hidden; bottom.classList.toggle('open', !alt.hidden); altBtn.setAttribute('aria-pressed', String(!alt.hidden)); } }, 'ALT');
   const openLink = h('a', { class: 'icon-btn v-open', target: '_blank', rel: 'noopener noreferrer', 'aria-label': 'Abrir original' }, svgIcon('external', 22));
   const close = () => d.close();
 
@@ -781,7 +782,7 @@ function openViewer(items, start = 0) {
     const it = items[cur];
     openLink.href = safeUrl(it.full);
     altBtn.hidden = !it.alt;
-    alt.hidden = true;
+    alt.hidden = true; bottom.classList.remove('open'); altBtn.setAttribute('aria-pressed', 'false');
     alt.textContent = it.alt || '';
   };
   let raf = 0;
@@ -798,7 +799,7 @@ function openViewer(items, start = 0) {
     h('div', { class: 'v-top' }, h('button', { type: 'button', class: 'icon-btn', 'aria-label': 'Fechar', onclick: close }, svgIcon('close', 24)), counter, openLink),
     items.length > 1 ? h('button', { type: 'button', class: 'v-nav prev', 'aria-label': 'Anterior', onclick: () => go(cur - 1) }, svgIcon('back', 26)) : null,
     items.length > 1 ? h('button', { type: 'button', class: 'v-nav next', 'aria-label': 'Próxima', onclick: () => go(cur + 1) }, svgIcon('back', 26)) : null,
-    h('div', { class: 'v-bottom' }, altBtn, alt));
+    (bottom.append(altBtn, alt), bottom));
   d.showModal();
   track.scrollLeft = start * track.clientWidth;
   show(start);
