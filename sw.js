@@ -1,7 +1,7 @@
 // Service worker do Paquiderme: só guarda o "casco" do app para abrir rápido/offline.
 // Nunca toca em chamadas à API (são de outra origem e passam direto).
 // Ao mudar qualquer arquivo do app, aumente a versão abaixo.
-const CACHE = 'paquiderme-v19';
+const CACHE = 'paquiderme-v20';
 const SHELL = [
   './',
   'index.html',
@@ -17,7 +17,7 @@ const SHELL = [
 ];
 
 self.addEventListener('install', (e) => {
-  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));
+  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL.map((u) => new Request(u, { cache: 'reload' })))).then(() => self.skipWaiting()));
 });
 
 self.addEventListener('activate', (e) => {
@@ -33,17 +33,20 @@ self.addEventListener('fetch', (e) => {
   const url = new URL(req.url);
   if (req.method !== 'GET' || url.origin !== self.location.origin) return;
 
-  // stale-while-revalidate; ignoreSearch para que "/?code=..." (retorno do OAuth) abra o index em cache
+  // rede primeiro (sempre a versão mais nova, ignorando o cache HTTP do navegador); sem rede, usa o guardado
   e.respondWith(
     caches.open(CACHE).then(async (cache) => {
-      const cached = await cache.match(req, { ignoreSearch: true });
-      const network = fetch(req)
-        .then((res) => {
-          if (res.ok) cache.put(url.search ? new Request(url.origin + url.pathname) : req, res.clone());
-          return res;
-        })
-        .catch(() => cached);
-      return cached || network;
+      try {
+        const ctl = new AbortController();
+        const timer = setTimeout(() => ctl.abort(), 6000); // rede muito lenta: cai para o que está guardado
+        const res = await fetch(req, { cache: 'no-cache', signal: ctl.signal }).finally(() => clearTimeout(timer));
+        if (res.ok) cache.put(url.search ? new Request(url.origin + url.pathname) : req, res.clone());
+        return res;
+      } catch (err) {
+        const cached = await cache.match(req, { ignoreSearch: true });
+        if (cached) return cached;
+        throw err;
+      }
     }),
   );
 });

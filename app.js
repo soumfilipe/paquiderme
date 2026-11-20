@@ -1290,17 +1290,16 @@ async function saveEditProfile(e) {
 }
 
 function editProfileView(view, e) {
-  const save = h('button', { type: 'button', class: 'primary edit-save', onclick: () => saveEditProfile(e) }, 'Salvar');
-  view.append(profileBar('Editar perfil', () => closeEditProfile(e), e.loaded ? h('span', { class: 'push-right' }, save) : null));
+  view.append(profileBar('Editar perfil', () => closeEditProfile(e)));
   if (e.error && !e.loaded) { view.append(h('div', { class: 'empty' }, h('p', { class: 'error' }, e.error), h('button', { type: 'button', onclick: () => loadEditProfile(e) }, 'Tentar de novo'))); return; }
   if (!e.loaded) { view.append(h('p', { class: 'empty' }, 'Carregando…')); return; }
   const f = e.form;
   const touch = () => { e.dirty = true; };
 
-  // capa e avatar
+  // capa e avatar: o lápis sobre a imagem abre o seletor de arquivo
   const header = h('div', { class: 'banner edit-banner', style: e.headerUrl && !/missing\.png/.test(e.headerUrl) ? `background-image:url("${e.headerUrl}")` : null });
   const avatar = h('img', { class: 'profile-avatar', src: e.avatarUrl, alt: 'Foto atual' });
-  const pick = (label, kind, w, hh, target, field) => {
+  const overlay = (label, kind, w, hh, onPreview) => {
     const input = h('input', { type: 'file', accept: 'image/*', hidden: true, 'aria-label': label });
     input.addEventListener('change', async () => {
       const file = input.files && input.files[0];
@@ -1308,18 +1307,19 @@ function editProfileView(view, e) {
       try {
         const blob = await prepImage(file, w, hh);
         e[kind + 'Blob'] = blob;
-        const url = URL.createObjectURL(blob);
-        if (kind === 'avatar') avatar.src = url; else header.style.backgroundImage = `url("${url}")`;
+        onPreview(URL.createObjectURL(blob));
         touch();
       } catch (err) { toast(err.message); }
       input.value = '';
     });
-    return h('span', {}, input, h('button', { type: 'button', onclick: () => input.click() }, label));
+    return h('span', { class: `edit-overlay ${kind}` }, input,
+      h('button', { type: 'button', 'aria-label': label, onclick: () => input.click() }, svgIcon('compose', 22)));
   };
+  header.append(overlay('Trocar capa', 'header', 1500, 500, (url) => { header.style.backgroundImage = `url("${url}")`; }));
   view.append(header);
-  view.append(h('div', { class: 'edit-media' }, avatar, h('div', { class: 'edit-media-btns' },
-    pick('Trocar foto', 'avatar', 400, 400), pick('Trocar capa', 'header', 1500, 500)),
-    h('p', { class: 'muted small' }, 'As imagens são reduzidas e recortadas ao centro (foto quadrada, capa 3:1).')));
+  view.append(h('div', { class: 'edit-media' },
+    h('div', { class: 'edit-avatar' }, avatar, overlay('Trocar foto', 'avatar', 400, 400, (url) => { avatar.src = url; })),
+    h('p', { class: 'muted small' }, 'Toque no lápis para trocar. As imagens são reduzidas e recortadas ao centro (foto quadrada, capa 3:1).')));
 
   const field = (label, el) => h('label', { class: 'edit-field' }, h('span', { class: 'muted small' }, label), el);
   const name = h('input', { value: f.display_name, maxlength: '30', autocomplete: 'off' });

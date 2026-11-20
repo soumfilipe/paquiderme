@@ -533,3 +533,10 @@ html[data-motion='reduce'] *, html[data-motion='reduce'] *::before, html[data-mo
 .save-bar button { width: 100%; min-height: 48px; box-shadow: 0 6px 20px rgb(0 0 0 / .3); }
 .profile-bar .edit-save { min-height: 36px; padding: 0 16px; margin-right: 4px; }
 .badge { display: inline-flex; align-items: center; gap: 4px; }
+
+.edit-banner { position: relative; }
+.edit-avatar { position: relative; display: inline-block; line-height: 0; }
+.edit-overlay { position: absolute; inset: 0; display: grid; place-items: center; }
+.edit-overlay button { width: 44px; height: 44px; border-radius: 50%; padding: 0; display: grid; place-items: center; background: rgb(0 0 0 / .55); color: #fff; border: 1.5px solid rgb(255 255 255 / .7); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
+.edit-media { align-items: flex-start; }
+.edit-media .muted { flex: 1 1 0; min-width: 0; margin-top: 44px; }
