@@ -538,6 +538,9 @@ async function statusMenu(sh) {
   items.push({ label: 'Copiar link', icon: 'copy', onclick: async () => {
     try { await navigator.clipboard.writeText(url); toast('Link copiado'); } catch { toast(url); }
   } });
+  if (navigator.share) items.push({ label: 'Compartilhar…', icon: 'share', onclick: async () => {
+    try { await navigator.share({ url, text: plainText(sh.content).slice(0, 200) }); } catch { /* cancelado */ }
+  } });
   items.push({ label: 'Abrir original', icon: 'external', href: url });
   if (!own) {
     busy(+1);
@@ -636,6 +639,13 @@ function statusEl(s, { readonly = false, host = null } = {}) {
     el.append(h('div', { class: 'boost-note' }, svgIcon('boost', 14), ' ', h('span', { class: 'link-name', role: 'button', tabindex: '0', onclick: () => openAccountFrom(s.account, host) }, nameNode(s.account)), ' impulsionou'));
   }
 
+  if (sh.in_reply_to_id && !host) {
+    const to = (sh.mentions || []).find((m) => m.id === sh.in_reply_to_account_id);
+    el.append(h('div', { class: 'reply-note muted small', role: 'button', tabindex: '0', onclick: async (e) => {
+      e.stopPropagation();
+      try { openThread(await api(`/api/v1/statuses/${sh.in_reply_to_id}`)); } catch (err) { toast(err.message); }
+    } }, svgIcon('reply', 14), ` Em resposta a ${to ? '@' + to.acct : 'uma publicação'}`));
+  }
   el.append(h('header', {},
     h('div', { class: 'who-link', role: 'button', tabindex: '0', 'aria-label': `Abrir perfil de ${a.acct}`, onclick: () => openAccountFrom(a, host) },
       h('img', { class: 'avatar', src: safeUrl(a.avatar_static || a.avatar), alt: '', loading: 'lazy' }),
@@ -651,6 +661,13 @@ function statusEl(s, { readonly = false, host = null } = {}) {
   const tr = translations.get(sh.id);
   body.append(sanitizeHtml(tr && tr.shown ? tr.content : sh.content, sh.emojis));
   const parts = [body];
+  if (plainText(sh.content).length > 600 || (sh.content.match(/<br|<\/p>/g) || []).length > 10) {
+    body.classList.add('clamp');
+    parts.push(h('button', { type: 'button', class: 'link more-text', onclick: (e) => {
+      const on = body.classList.toggle('clamp');
+      e.currentTarget.textContent = on ? 'Mostrar mais' : 'Mostrar menos';
+    } }, 'Mostrar mais'));
+  }
   const myLang = (navigator.language || 'pt').slice(0, 2);
   if (!readonly && !host && limits.translation && sh.language && sh.language !== myLang && sh.content) {
     parts.push(tr
@@ -950,7 +967,76 @@ function clearCaches(s) {
   } catch { /* ignora */ }
 }
 
+/* ----- Marcador do Início, sincronizado entre aparelhos (/api/v1/markers) ----- */
+const markKey = () => `mark.${session.host}.${session.account.id}`;
+function topVisibleItemId() {
+  for (const el of document.querySelectorAll('#view .status[data-id]')) {
+    if (el.getBoundingClientRect().bottom > 70) {
+      const it = state.home.items.find((x) => (x.reblog || x).id === el.dataset.id);
+      return it ? it.id : null;
+    }
+  }
+  return null;
+}
+function saveHomeMarker() {
+  if (!session || state.tab !== 'home' || state.homeList || state.profiles.length || window.scrollY < 40) return;
+  const id = topVisibleItemId();
+  if (!id || store.get(markKey()) === id) return;
+  store.set(markKey(), id);
+  api('/api/v1/markers', { method: 'POST', body: { home: { last_read_id: id } } }).catch(() => {});
+}
+let markTimer = null;
+function scheduleMarker() { clearTimeout(markTimer); markTimer = setTimeout(saveHomeMarker, 2000); }
+async function checkHomeMarker() {
+  const pill = $('#mark-pill');
+  pill.hidden = true;
+  if (!session || state.homeList) return;
+  try {
+    const m = await api('/api/v1/markers', { params: { 'timeline[]': ['home'] } });
+    const remote = m && m.home && m.home.last_read_id;
+    if (!remote || remote === store.get(markKey())) return;
+    const idx = state.home.items.findIndex((x) => x.id === remote);
+    if (idx < 1) return;
+    pill.textContent = 'Continuar de onde parou';
+    pill.hidden = false;
+    pill.onclick = () => {
+      pill.hidden = true;
+      store.set(markKey(), remote);
+      const el = document.querySelector(`#view .status[data-id="${(state.home.items[idx].reblog || state.home.items[idx]).id}"]`);
+      if (el) window.scrollTo({ top: el.getBoundingClientRect().top + window.scrollY - 70, behavior: 'smooth' });
+    };
+  } catch { /* instância sem marcadores */ }
+}
+
+let focusedStatus = null;
+function shortcutKey(e) {
+  if (!session || e.metaKey || e.ctrlKey || e.altKey) return;
+  const t = e.target;
+  if (t && t.matches && t.matches('input, textarea, select, [contenteditable]')) return;
+  if ($('#composer').open || $('#sheet').open || $('#viewer').open) return;
+  const list = [...document.querySelectorAll('#view .status[data-id]')];
+  if (!list.length) return;
+  const move = (d) => {
+    let i = focusedStatus ? list.indexOf(focusedStatus) : -1;
+    if (i < 0) i = Math.max(0, list.findIndex((el) => el.getBoundingClientRect().bottom > 70));
+    else i = Math.max(0, Math.min(list.length - 1, i + d));
+    focusedStatus = list[i];
+    list.forEach((el) => el.classList.toggle('kbd', el === focusedStatus));
+    window.scrollTo({ top: focusedStatus.getBoundingClientRect().top + window.scrollY - 70, behavior: 'smooth' });
+  };
+  const act = (sel) => { if (focusedStatus) { const b = focusedStatus.querySelector(sel); if (b && !b.disabled) b.click(); } };
+  if (e.key === 'j') move(1);
+  else if (e.key === 'k') move(-1);
+  else if (e.key === 'r') { e.preventDefault(); act('.actions .reply'); }
+  else if (e.key === 'f') act('.actions .fav');
+  else if (e.key === 'b') act('.actions .boost');
+  else if (e.key === 'Enter' && focusedStatus && !(t && t.matches && t.matches('a, button, [role="button"]'))) focusedStatus.click();
+  else return;
+  if (e.key !== 'Enter') e.preventDefault();
+}
+
 function saveScroll() {
+  saveHomeMarker();
   if (!session || state.profiles.length) return;
   const kind = state.tab === 'home' && !state.homeList ? 'home' : state.tab === 'notifications' ? 'notifications' : null;
   if (kind) store.set(scrollKey(kind), Math.round(window.scrollY));
@@ -982,6 +1068,7 @@ async function refreshWithCache(kind) {
     st.error = e.message; // segue mostrando o que está guardado
   } finally {
     st.loading = false;
+    if (session && kind === 'home') setTimeout(checkHomeMarker, 300);
     if (session) {
       render();
       if (st.cleanSlate) { st.cleanSlate = false; window.scrollTo(0, 0); }
@@ -2771,6 +2858,7 @@ async function loadList(kind, append = false) {
     st.loading = false;
     if (!append) busy(-1);
     if (session) render();
+    if (session && kind === 'home' && !append && !st.error) setTimeout(checkHomeMarker, 300);
   }
 }
 
@@ -3469,6 +3557,7 @@ function bindUi() {
   window.addEventListener('online', () => { if (!live.ws) { live.tries = 0; liveConnect(); } });
   $('#new-pill').addEventListener('click', showNewPosts);
   window.addEventListener('pagehide', saveScroll);
+  window.addEventListener('scroll', scheduleMarker, { passive: true });
   // elementos clicáveis com role="button" (avatares, nomes) também respondem a Enter/espaço (teclado, VoiceOver)
   document.addEventListener('keydown', (e) => {
     if ((e.key === 'Enter' || e.key === ' ') && e.target.matches && e.target.matches('[role="button"]:not(button)')) {
@@ -3476,6 +3565,7 @@ function bindUi() {
       e.target.click();
     }
   });
+  document.addEventListener('keydown', shortcutKey);
   const sheet = $('#sheet');
   sheet.addEventListener('click', (e) => { if (e.target === sheet) sheet.close(); });
   if ('serviceWorker' in navigator) {
