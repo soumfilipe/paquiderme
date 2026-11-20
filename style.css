@@ -682,3 +682,25 @@ body.has-dock #view { padding-bottom: calc(var(--tabbar-h) + var(--sab) + 96px);
 .sg-item .emoji-img { width: 26px; height: 26px; flex: none; object-fit: contain; }
 .sg-text { display: flex; flex-direction: column; align-items: flex-start; min-width: 0; line-height: 1.15; }
 .sg-text > * { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Mensagens, pedidos, tags, histórico, tradução */
+.conv { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--border); cursor: pointer; }
+.conv .notif-avatars { padding: 0 8px 0 0; flex: none; }
+.conv-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.conv-top { display: flex; justify-content: space-between; gap: 8px; }
+.conv-top strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.conv-text { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.conv.unread .conv-top strong { color: var(--accent); }
+.conv-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--accent); flex: none; }
+.req-actions { display: flex; gap: 8px; padding: 4px 16px 12px; align-items: center; }
+.tag-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--border); }
+.tag-name { background: none; border: 0; padding: 4px 0; font-size: 17px; font-weight: 600; color: var(--accent); }
+.tag-head .push-right { margin-left: auto; }
+.featured-tags { display: flex; flex-wrap: wrap; gap: 6px; }
+.when { display: flex; align-items: baseline; gap: 6px; }
+.when .edited, .tr-btn, .tr-note .link { background: none; border: 0; padding: 4px 0; color: var(--accent); font-size: 13px; font-weight: 600; }
+.tr-btn { display: inline-block; margin-top: 4px; }
+.tr-note { margin-top: 6px; }
+.history { display: flex; flex-direction: column; gap: 14px; }
+.hist-item { border-bottom: 1px solid var(--border); padding-bottom: 12px; }
+.hist-cw { font-weight: 600; margin: 4px 0; }

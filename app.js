@@ -45,6 +45,10 @@ const mkState = () => ({
   tab: 'home',
   home: mkList(),
   notifications: mkList(),
+  notifTab: 'all',      // all | mentions | dms
+  mentions: mkList(),
+  convs: mkList(),
+  followedTags: { items: [], loaded: false, loading: false, error: null },
   local: mkList(),
   global: mkList(),
   other: mkList(),
@@ -61,6 +65,7 @@ const mkState = () => ({
   explore: {
     seg: store.get('seg') === 'search' ? 'local' : store.get('seg', 'local'),
     tag: null,
+    tagFollowing: null,
     otherHost: store.get('otherHost', ''),
   },
 });
@@ -445,6 +450,27 @@ async function accountMenu(account, rel) {
   openSheet(`@${account.acct}`, moderationItems(account, rel, null));
 }
 
+async function translateStatus(sh, btn) {
+  btn.disabled = true; btn.textContent = 'Traduzindo…';
+  try {
+    const r = await api(`/api/v1/statuses/${sh.id}/translate`, { method: 'POST', body: { lang: (navigator.language || 'pt').slice(0, 2) } });
+    translations.set(sh.id, { content: r.content, lang: r.detected_source_language, provider: r.provider, shown: true });
+    replaceStatus(sh);
+  } catch (e) { toast(e.message); btn.disabled = false; btn.textContent = `Traduzir do ${sh.language.toUpperCase()}`; }
+}
+
+async function openHistory(sh) {
+  openSheet('Histórico de edições', [], h('p', { class: 'muted' }, 'Carregando…'));
+  try {
+    const list = await api(`/api/v1/statuses/${sh.id}/history`);
+    const box = h('div', { class: 'history' }, ...list.slice().reverse().map((v, i) => h('div', { class: 'hist-item' },
+      h('div', { class: 'muted small' }, `${i === 0 ? 'Atual · ' : ''}${new Date(v.created_at).toLocaleString('pt-BR')}`),
+      v.spoiler_text ? h('div', { class: 'hist-cw' }, emojiFragment(v.spoiler_text, v.emojis)) : null,
+      h('div', { class: 'body' }, sanitizeHtml(v.content, v.emojis)))));
+    openSheet('Histórico de edições', [], box);
+  } catch (e) { toast(e.message); try { $('#sheet').close(); } catch { /* ignora */ } }
+}
+
 async function statusMenu(sh) {
   const own = sh.account.id === session.account.id;
   const items = [];
@@ -466,6 +492,8 @@ async function statusMenu(sh) {
       try { await api(`/api/v1/statuses/${sh.id}`, { method: 'DELETE' }); removeStatus(sh.id); toast('Publicação excluída'); } catch (e) { toast(e.message); }
     } }]) });
   }
+  if (sh.favourites_count > 0) items.push({ label: `Quem favoritou (${sh.favourites_count})`, icon: 'fav', onclick: () => openAccountsEntry('Favoritaram', `/api/v1/statuses/${sh.id}/favourited_by`) });
+  if (sh.reblogs_count > 0) items.push({ label: `Quem impulsionou (${sh.reblogs_count})`, icon: 'boost', onclick: () => openAccountsEntry('Impulsionaram', `/api/v1/statuses/${sh.id}/reblogged_by`) });
   items.push({ label: 'Copiar link', icon: 'copy', onclick: async () => {
     try { await navigator.clipboard.writeText(url); toast('Link copiado'); } catch { toast(url); }
   } });
@@ -529,6 +557,7 @@ function mediaEl(sh) {
 
 // Filtros do servidor: publicações que casam com um filtro viram um aviso recolhido
 const revealed = new Set();
+const translations = new Map(); // id da publicação -> { content, lang, provider, shown }
 function filterHits(s) {
   const sh = s.reblog || s;
   const list = (s.filtered && s.filtered.length ? s.filtered : sh.filtered) || [];
@@ -560,12 +589,22 @@ function statusEl(s, { readonly = false, host = null } = {}) {
       h('div', { class: 'who' },
         h('div', { class: 'name' }, nameNode(a)),
         h('span', { class: 'acct' }, '@' + a.acct))),
-    h('time', { datetime: sh.created_at, title: new Date(sh.created_at).toLocaleString('pt-BR') }, timeAgo(sh.created_at)),
+    h('div', { class: 'when' },
+      h('time', { datetime: sh.created_at, title: new Date(sh.created_at).toLocaleString('pt-BR') }, timeAgo(sh.created_at)),
+      sh.edited_at && !host ? h('button', { type: 'button', class: 'edited', onclick: () => openHistory(sh) }, 'editado') : null),
   ));
 
   const body = h('div', { class: 'body' });
-  body.append(sanitizeHtml(sh.content, sh.emojis));
+  const tr = translations.get(sh.id);
+  body.append(sanitizeHtml(tr && tr.shown ? tr.content : sh.content, sh.emojis));
   const parts = [body];
+  const myLang = (navigator.language || 'pt').slice(0, 2);
+  if (!readonly && !host && limits.translation && sh.language && sh.language !== myLang && sh.content) {
+    parts.push(tr
+      ? h('div', { class: 'tr-note muted small' }, `Traduzido de ${tr.lang ? tr.lang.toUpperCase() : sh.language.toUpperCase()}${tr.provider ? ` por ${tr.provider}` : ''} · `,
+        h('button', { type: 'button', class: 'link', onclick: () => { tr.shown = !tr.shown; replaceStatus(sh); } }, tr.shown ? 'Ver original' : 'Ver tradução'))
+      : h('button', { type: 'button', class: 'link tr-btn', onclick: (e) => translateStatus(sh, e.currentTarget) }, `Traduzir do ${sh.language.toUpperCase()}`));
+  }
   const media = mediaEl(sh);
   if (media) parts.push(media);
   if (sh.poll) parts.push(pollEl(sh, { readonly: readonly || !!host }));
@@ -672,6 +711,55 @@ function notifGroupEl(g) {
 
 function notifItem(i) { return i.group || i.follows ? notifGroupEl(i) : notifEl(i); }
 
+const NOTIF_TABS = [['all', 'Todos'], ['mentions', 'Menções'], ['dms', 'Mensagens']];
+
+function setNotifTab(id) {
+  state.notifTab = id;
+  window.scrollTo(0, 0);
+  render();
+  const k = id === 'mentions' ? 'mentions' : id === 'dms' ? 'convs' : 'notifications';
+  if (!state[k].items.length && !state[k].loading) loadList(k);
+}
+
+function notificationsView(view) {
+  view.append(h('div', { class: 'seg-bar', role: 'tablist' }, ...NOTIF_TABS.map(([id, label]) =>
+    h('button', { type: 'button', role: 'tab', class: `chip${state.notifTab === id ? ' active' : ''}`, 'aria-selected': state.notifTab === id ? 'true' : 'false', onclick: () => setNotifTab(id) }, label))));
+  if (state.notifTab === 'mentions') renderList(view, 'mentions', notifEl);
+  else if (state.notifTab === 'dms') renderList(view, 'convs', convEl);
+  else renderList(view, 'notifications', notifItem, groupNotifs);
+}
+
+const plainText = (html) => { const d = document.createElement('div'); d.innerHTML = html || ''; d.querySelectorAll('br').forEach((b) => b.replaceWith(' ')); return (d.textContent || '').replace(/\s+/g, ' ').trim(); };
+
+function convEl(c) {
+  const last = c.last_status;
+  if (!last) return null;
+  const accs = c.accounts && c.accounts.length ? c.accounts : [last.account];
+  const row = h('div', { class: `conv${c.unread ? ' unread' : ''}`, role: 'button', tabindex: '0', onclick: async () => {
+    if (c.unread) { c.unread = false; row.classList.remove('unread'); api(`/api/v1/conversations/${c.id}/read`, { method: 'POST' }).catch(() => {}); }
+    openThread(last);
+  } },
+    avatarStack(accs),
+    h('div', { class: 'conv-body' },
+      h('div', { class: 'conv-top' }, h('strong', {}, accs.map((x) => x.display_name || x.acct).join(', ')), h('time', { class: 'muted small' }, timeAgo(last.created_at))),
+      h('div', { class: 'conv-text muted' }, plainText(last.content) || (last.media_attachments && last.media_attachments.length ? '(mídia)' : ''))),
+    c.unread ? h('span', { class: 'conv-dot', 'aria-label': 'Não lida' }) : null);
+  return row;
+}
+
+function requestButtons(n, wrap) {
+  const box = h('div', { class: 'req-actions' });
+  const act = (verb, label, done, cls) => h('button', { type: 'button', class: cls, onclick: async () => {
+    box.querySelectorAll('button').forEach((b) => { b.disabled = true; });
+    try {
+      await api(`/api/v1/follow_requests/${n.account.id}/${verb}`, { method: 'POST' });
+      box.replaceChildren(h('span', { class: 'muted' }, done));
+    } catch (e) { toast(e.message); box.querySelectorAll('button').forEach((b) => { b.disabled = false; }); }
+  } }, label);
+  box.append(act('authorize', 'Aceitar', 'Pedido aceito', 'primary'), act('reject', 'Rejeitar', 'Pedido rejeitado', ''));
+  return box;
+}
+
 function notifEl(n) {
   const wrap = h('div', { class: 'notif' });
   wrap.append(h('div', { class: 'notif-kind' },
@@ -679,6 +767,7 @@ function notifEl(n) {
     ' ', NOTIF_KINDS[n.type] || n.type, ' · ', timeAgo(n.created_at)));
   if (n.status) wrap.append(statusEl(n.status));
   else wrap.append(accountRow(n.account));
+  if (n.type === 'follow_request') wrap.append(requestButtons(n, wrap));
   return wrap;
 }
 
@@ -1992,12 +2081,14 @@ async function loadProfile(p) {
   p.error = null;
   try {
     const self = p.id === session.account.id;
-    const [acct, rels, pinned] = await Promise.all([
+    const [acct, rels, pinned, featured] = await Promise.all([
       api(`/api/v1/accounts/${p.id}`),
       self ? Promise.resolve(null) : api('/api/v1/accounts/relationships', { params: { 'id[]': [p.id] } }),
       api(`/api/v1/accounts/${p.id}/statuses`, { params: { pinned: 'true' } }).catch(() => []),
+      api(`/api/v1/accounts/${p.id}/featured_tags`).catch(() => []),
     ]);
     p.pinned = pinned;
+    p.featured = featured;
     p.account = acct;
     p.rel = rels ? rels[0] : null;
     p.loaded = true;
@@ -2176,6 +2267,7 @@ function profileView(view, p) {
     badges.length ? h('div', { class: 'badges' }, ...badges.map(([label, icon]) => h('span', { class: 'badge' }, icon ? svgIcon(icon, 13) : null, label))) : null,
     a.moved ? h('p', { class: 'muted small' }, 'Mudou para ', h('span', { class: 'link-name', role: 'button', tabindex: '0', onclick: () => openProfile(a.moved) }, '@' + a.moved.acct)) : null,
     a.note ? h('div', { class: 'bio' }, sanitizeHtml(a.note, a.emojis)) : null,
+    p.featured && p.featured.length ? h('div', { class: 'featured-tags' }, ...p.featured.map((t) => h('button', { type: 'button', class: 'chip', onclick: () => openTag(t.name) }, `#${t.name}`, t.statuses_count ? h('span', { class: 'muted small' }, ` ${t.statuses_count}`) : null))) : null,
     fields.length ? h('dl', { class: 'fields' }, ...fields) : null,
     h('div', { class: 'counts' },
       h('span', {}, h('strong', {}, fmtCount(a.statuses_count)), ' publicações'),
@@ -2206,6 +2298,7 @@ const SEGMENTS = [
   ['local', 'Minha instância'],
   ['global', 'Global'],
   ['trends', 'Em alta'],
+  ['tags', 'Hashtags'],
   ['other', 'Outras'],
 ];
 
@@ -2382,7 +2475,8 @@ function exploreView(view) {
   if (ex.tag) {
     view.append(h('div', { class: 'tag-head' },
       h('button', { type: 'button', class: 'icon-btn', 'aria-label': 'Voltar', onclick: closeTag }, svgIcon('back', 22)),
-      h('strong', {}, '#' + ex.tag)));
+      h('strong', {}, '#' + ex.tag),
+      ex.tagFollowing === null ? null : h('button', { type: 'button', class: `chip push-right${ex.tagFollowing ? ' active' : ''}`, 'aria-pressed': ex.tagFollowing ? 'true' : 'false', onclick: () => toggleFollowTag(ex.tag) }, ex.tagFollowing ? 'Seguindo' : 'Seguir')));
     renderList(view, 'tag', (s) => statusEl(s));
     return;
   }
@@ -2390,6 +2484,7 @@ function exploreView(view) {
   view.append(h('div', { class: 'seg-bar', role: 'tablist' }, ...SEGMENTS.map(([id, label]) =>
     h('button', { type: 'button', role: 'tab', class: `chip${ex.seg === id ? ' active' : ''}`, 'aria-selected': ex.seg === id ? 'true' : 'false', onclick: () => setSeg(id) }, label))));
   if (ex.seg === 'trends') trendsView(view);
+  else if (ex.seg === 'tags') tagsView(view);
   else if (ex.seg === 'other') otherView(view);
   else renderList(view, ex.seg, (s) => statusEl(s));
 }
@@ -2404,8 +2499,47 @@ function setSeg(id) {
 
 function openTag(name) {
   state.explore.tag = name;
+  state.explore.tagFollowing = null;
+  loadTagInfo(name);
   state.tag = mkList();
   selectTab('explore');
+}
+
+async function loadTagInfo(name) {
+  try {
+    const t = await api(`/api/v1/tags/${encodeURIComponent(name)}`);
+    if (state.explore.tag === name) { state.explore.tagFollowing = !!t.following; render(); }
+  } catch { /* instância sem o recurso: some o botão */ }
+}
+
+async function toggleFollowTag(name) {
+  const ex = state.explore;
+  const was = ex.tagFollowing;
+  ex.tagFollowing = !was; render();
+  try {
+    await api(`/api/v1/tags/${encodeURIComponent(name)}/${was ? 'unfollow' : 'follow'}`, { method: 'POST' });
+    state.followedTags.loaded = false;
+    toast(was ? `Deixou de seguir #${name}` : `Seguindo #${name}`);
+  } catch (e) { ex.tagFollowing = was; render(); toast(e.message); }
+}
+
+async function loadFollowedTags() {
+  const f = state.followedTags;
+  if (f.loading) return;
+  f.loading = true; f.error = null; busy(+1); render();
+  try { f.items = await api('/api/v1/followed_tags', { params: { limit: 100 } }); f.loaded = true; } catch (e) { f.error = e.message; } finally { f.loading = false; busy(-1); if (session) render(); }
+}
+
+function tagsView(view) {
+  const f = state.followedTags;
+  if (f.error) { view.append(h('div', { class: 'empty' }, h('p', { class: 'error' }, f.error), h('button', { type: 'button', onclick: loadFollowedTags }, 'Tentar de novo'))); return; }
+  if (!f.loaded) { view.append(h('p', { class: 'empty' }, 'Carregando…')); return; }
+  if (!f.items.length) { view.append(h('p', { class: 'empty' }, 'Você ainda não segue hashtags. Abra uma hashtag e toque em Seguir: as publicações dela passam a aparecer no Início.')); return; }
+  f.items.forEach((t) => view.append(h('div', { class: 'tag-row' },
+    h('button', { type: 'button', class: 'tag-name', onclick: () => openTag(t.name) }, '#' + t.name),
+    h('button', { type: 'button', onclick: async () => {
+      try { await api(`/api/v1/tags/${encodeURIComponent(t.name)}/unfollow`, { method: 'POST' }); f.items = f.items.filter((x) => x.name !== t.name); render(); } catch (e) { toast(e.message); }
+    } }, 'Deixar de seguir'))));
 }
 
 function closeTag() {
@@ -2433,6 +2567,8 @@ function ensureExploreLoaded() {
     /* resultados da busca já carregados */
   } else if (kind === 'trends') {
     if (!state.trends.loaded && !state.trends.loading) loadTrends();
+  } else if (kind === 'tags') {
+    if (!state.followedTags.loaded && !state.followedTags.loading) loadFollowedTags();
   } else if (kind === 'other') {
     if (ex.otherHost && !state.other.items.length && !state.other.loading && !state.other.error) loadList('other');
   } else if (!state[kind].items.length && !state[kind].loading) {
@@ -2454,7 +2590,7 @@ function render() {
   if (top && top.type) entryView(view, top);
   else if (prof) profileView(view, prof);
   else if (state.tab === 'home') homeView(view);
-  else if (state.tab === 'notifications') renderList(view, 'notifications', notifItem, groupNotifs);
+  else if (state.tab === 'notifications') notificationsView(view);
   else if (state.tab === 'explore') exploreView(view);
   window.scrollTo(0, y);
   updateDock();
@@ -2479,6 +2615,8 @@ function listSpec(kind) {
     case 'home': return { path: '/api/v1/timelines/home' };
     case 'list': return { path: `/api/v1/timelines/list/${encodeURIComponent(state.homeList)}` };
     case 'notifications': return { path: '/api/v1/notifications' };
+    case 'mentions': return { path: '/api/v1/notifications', extra: { 'types[]': 'mention' } };
+    case 'convs': return { path: '/api/v1/conversations', extra: { limit: 20 } };
     case 'local': return { path: '/api/v1/timelines/public', extra: { local: 'true' } };
     case 'global': return { path: '/api/v1/timelines/public' };
     case 'tag': return { path: `/api/v1/timelines/tag/${encodeURIComponent(state.explore.tag || '')}` };
@@ -2556,7 +2694,7 @@ function currentKind() {
   const p = activeProfile();
   if (p) return (p === state.me && state.settingsOpen) ? null : 'p:' + (p.people || p.seg);
   if (state.tab === 'home') return state.homeList ? 'list' : 'home';
-  if (state.tab === 'notifications') return state.tab;
+  if (state.tab === 'notifications') return state.notifTab === 'mentions' ? 'mentions' : state.notifTab === 'dms' ? 'convs' : 'notifications';
   if (state.tab === 'explore') return state.explore.tag ? 'tag' : state.search.active ? 'search' : state.explore.seg;
   return null;
 }
@@ -2567,9 +2705,10 @@ function refreshCurrent() {
   if (kind === 'entry') { const te = topEntry(); if (te.type === 'thread') loadThread(te); else if (te.reload) te.reload(); return; }
   if (kind === 'home' || kind === 'list') loadLists(true);
   if (kind.startsWith('p:')) loadProfile(activeProfile());
-  if (kind === 'search') runSearch();
-  else if (kind === 'trends') loadTrends();
-  else loadList(kind);
+  if (kind === 'search') { runSearch(); return; }
+  if (kind === 'tags') { loadFollowedTags(); return; }
+  if (kind === 'trends') { loadTrends(); return; }
+  loadList(kind);
 }
 
 function selectTab(tab) {
@@ -2666,7 +2805,7 @@ function bindPullToRefresh() {
 
 const mkCompose = () => ({ replyTo: null, edit: null, key: null, media: [], poll: null, sensitive: false, lang: store.get('lang', '') });
 let compose = mkCompose();
-let limits = { maxChars: 500, maxMedia: 4, pollOptions: 4, pollChars: 50, pollMin: 300, pollMax: 2629746 };
+let limits = { translation: false, maxChars: 500, maxMedia: 4, pollOptions: 4, pollChars: 50, pollMin: 300, pollMax: 2629746 };
 
 const LANGS = [['', 'Automático (padrão da conta)'], ['pt', 'Português'], ['en', 'English'], ['es', 'Español'], ['fr', 'Français'], ['de', 'Deutsch'], ['it', 'Italiano'], ['ja', '日本語'], ['zh', '中文'], ['ru', 'Русский'], ['ar', 'العربية']];
 
@@ -3147,10 +3286,12 @@ async function startApp() {
     const res = await fetch(`https://${session.host}/api/v2/instance`);
     const cfg = (await res.json())?.configuration || {};
     if (cfg.urls?.streaming) live.base = cfg.urls.streaming;
+    limits.translation = !!cfg.translation?.enabled;
     if (cfg.statuses?.max_characters) { limits.maxChars = cfg.statuses.max_characters; $('#text').maxLength = limits.maxChars; }
     if (cfg.statuses?.max_media_attachments) limits.maxMedia = cfg.statuses.max_media_attachments;
     if (cfg.polls) limits = { ...limits, pollOptions: cfg.polls.max_options || 4, pollChars: cfg.polls.max_characters_per_option || 50, pollMin: cfg.polls.min_expiration || 300, pollMax: cfg.polls.max_expiration || 2629746 };
   } catch { /* mantém os padrões */ }
+  if (limits.translation && session) render();
   liveConnect();
 }
 
