@@ -54,7 +54,7 @@ const mkState = () => ({
   other: mkList(),
   tag: mkList(),
   search: mkSearch(),
-  trends: { tags: [], statuses: [], loading: false, error: null, loaded: false },
+  trends: { tags: [], statuses: [], links: [], people: [], notices: [], loading: false, error: null, loaded: false },
   profiles: [],        // pilha de telas (perfis, conversas, listas) abertas por cima da aba atual
   lists: { items: [], loaded: false, loading: false, error: null },
   newPosts: [],        // publicações que chegaram em tempo real e esperam o toque para entrar
@@ -2439,6 +2439,19 @@ function trendsView(view) {
     return;
   }
   if (t.loading && !t.loaded) { view.append(h('p', { class: 'empty' }, 'Carregando…')); return; }
+  t.notices.forEach((n) => view.append(h('div', { class: 'notice' },
+    h('div', { class: 'notice-body' }, sanitizeHtml(n.content, n.emojis)),
+    h('button', { type: 'button', class: 'link', onclick: async () => {
+      try { await api(`/api/v1/announcements/${n.id}/dismiss`, { method: 'POST' }); t.notices = t.notices.filter((x) => x.id !== n.id); render(); } catch (e) { toast(e.message); }
+    } }, 'Dispensar'))));
+  if (t.people.length) {
+    view.append(h('h3', { class: 'section' }, 'Sugestões de contas'));
+    t.people.forEach((p) => { if (p.account) view.append(accountRow(p.account)); });
+  }
+  if (t.links.length) {
+    view.append(h('h3', { class: 'section' }, 'Links em alta'));
+    t.links.forEach((l) => { const c = cardEl(l); if (c) view.append(h('div', { class: 'trend-link' }, c)); });
+  }
   view.append(h('h3', { class: 'section' }, 'Hashtags em alta'));
   if (!t.tags.length) view.append(h('p', { class: 'empty' }, 'Nenhuma hashtag em alta agora.'));
   t.tags.forEach((tag) => view.append(tagRow(tag)));
@@ -2769,12 +2782,18 @@ async function loadTrends() {
   busy(+1);
   render();
   try {
-    const [tags, statuses] = await Promise.all([
+    const [tags, statuses, links, people, notices] = await Promise.all([
       api('/api/v1/trends/tags', { params: { limit: 20 } }),
       api('/api/v1/trends/statuses', { params: { limit: 20 } }).catch(() => []),
+      api('/api/v1/trends/links', { params: { limit: 10 } }).catch(() => []),
+      api('/api/v2/suggestions', { params: { limit: 8 } }).catch(() => []),
+      api('/api/v1/announcements').catch(() => []),
     ]);
     t.tags = tags;
     t.statuses = statuses;
+    t.links = Array.isArray(links) ? links : [];
+    t.people = Array.isArray(people) ? people : [];
+    t.notices = (Array.isArray(notices) ? notices : []).filter((n) => !n.read);
     t.loaded = true;
   } catch (e) {
     t.error = e.message;

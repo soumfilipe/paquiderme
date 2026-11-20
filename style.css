@@ -739,3 +739,9 @@ input, textarea, select { border-radius: var(--radius-field); }
 .quote-head .acct { color: var(--accent); }
 .quote-body { max-height: 8em; overflow: hidden; font-size: 15px; }
 .quote-body p { margin: 0 0 6px; }
+
+/* Explorar: avisos e links */
+.notice { margin: 10px 16px; padding: 12px 14px; border: 1px solid var(--accent); border-radius: var(--radius-field); background: var(--surface-2); display: flex; gap: 10px; align-items: flex-start; justify-content: space-between; }
+.notice-body { min-width: 0; overflow-wrap: anywhere; }
+.notice-body p { margin: 0 0 6px; }
+.trend-link { padding: 0 16px 6px; }

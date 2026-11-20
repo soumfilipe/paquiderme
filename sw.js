@@ -1,7 +1,7 @@
 // Service worker do Paquiderme: só guarda o "casco" do app para abrir rápido/offline.
 // Nunca toca em chamadas à API (são de outra origem e passam direto).
 // Ao mudar qualquer arquivo do app, aumente a versão abaixo.
-const CACHE = 'paquiderme-v34';
+const CACHE = 'paquiderme-v35';
 const SHELL = [
   './',
   'index.html',
