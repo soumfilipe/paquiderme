@@ -1570,12 +1570,12 @@ function profileView(view, p) {
       h('button', { type: 'button', class: 'icon-btn', 'aria-label': 'Mais opções da conta', onclick: () => accountMenu(a, p.rel) }, svgIcon('more', 22)));
 
   const badges = [];
-  if (a.bot) badges.push('Robô');
-  if (a.group) badges.push('Grupo');
-  if (a.locked) badges.push('Perfil fechado');
-  if (p.rel && p.rel.followed_by) badges.push('Segue você');
-  if (p.rel && p.rel.muting) badges.push('Silenciado');
-  if (p.rel && p.rel.blocked_by) badges.push('Bloqueou você');
+  if (a.bot) badges.push(['Robô', 'bot']);
+  if (a.group) badges.push(['Grupo']);
+  if (a.locked) badges.push(['Perfil fechado', 'lock']);
+  if (p.rel && p.rel.followed_by) badges.push(['Segue você']);
+  if (p.rel && p.rel.muting) badges.push(['Silenciado']);
+  if (p.rel && p.rel.blocked_by) badges.push(['Bloqueou você']);
 
   const fields = (a.fields || []).filter((f) => f.name || f.value).map((f) => h('div', { class: 'field' },
     h('dt', {}, emojiFragment(f.name || '', a.emojis)),
@@ -1587,7 +1587,7 @@ function profileView(view, p) {
       actions),
     h('h2', { class: 'profile-name' }, nameNode(a)),
     h('div', { class: 'muted' }, '@' + fullAcct(a)),
-    badges.length ? h('div', { class: 'badges' }, ...badges.map((b) => h('span', { class: 'badge' }, b))) : null,
+    badges.length ? h('div', { class: 'badges' }, ...badges.map(([label, icon]) => h('span', { class: 'badge' }, icon ? svgIcon(icon, 13) : null, label))) : null,
     a.moved ? h('p', { class: 'muted small' }, 'Mudou para ', h('span', { class: 'link-name', role: 'button', tabindex: '0', onclick: () => openProfile(a.moved) }, '@' + a.moved.acct)) : null,
     a.note ? h('div', { class: 'bio' }, sanitizeHtml(a.note, a.emojis)) : null,
     fields.length ? h('dl', { class: 'fields' }, ...fields) : null,
