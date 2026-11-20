@@ -479,6 +479,19 @@ async function statusMenu(sh) {
   openSheet(null, items);
 }
 
+function cardEl(c) {
+  if (!c || !c.url || !(c.title || c.description)) return null;
+  let host = '';
+  try { host = new URL(c.url).hostname.replace(/^www\./, ''); } catch { return null; }
+  const img = c.image ? h('img', { class: 'card-img', src: safeUrl(c.image), alt: '', loading: 'lazy', width: c.width || null, height: c.height || null }) : null;
+  return h('a', { class: `link-card${img ? '' : ' no-img'}`, href: safeUrl(c.url), target: '_blank', rel: 'noopener noreferrer' },
+    img,
+    h('div', { class: 'card-text' },
+      h('span', { class: 'card-site' }, c.provider_name || host),
+      h('strong', { class: 'card-title' }, c.title || host),
+      c.description ? h('span', { class: 'card-desc' }, c.description) : null));
+}
+
 function mediaEl(sh) {
   const items = (sh.media_attachments || []).filter((m) => safeUrl(m.url));
   if (!items.length) return null;
@@ -556,6 +569,7 @@ function statusEl(s, { readonly = false, host = null } = {}) {
   const media = mediaEl(sh);
   if (media) parts.push(media);
   if (sh.poll) parts.push(pollEl(sh, { readonly: readonly || !!host }));
+  else if (!media && sh.card) { const cd = cardEl(sh.card); if (cd) parts.push(cd); }
 
   if (sh.spoiler_text) {
     const summary = h('summary', {}, emojiFragment(sh.spoiler_text, sh.emojis));
@@ -2663,6 +2677,7 @@ function saveDraft() {
 }
 
 function openComposer({ replyTo = null, edit = null, share = '' } = {}) {
+  hideSuggest();
   compose.media.forEach((m) => m.preview && m.preview.startsWith('blob:') && URL.revokeObjectURL(m.preview));
   compose = mkCompose();
   compose.replyTo = replyTo;
@@ -2843,6 +2858,85 @@ function fitText() {
   const t = $('#text');
   t.style.height = 'auto';
   t.style.height = `${Math.max(140, t.scrollHeight + 2)}px`; // cresce com o texto; quem rola é o corpo do formulário
+}
+
+/* ----- Autocompletar @menções, #hashtags e :emojis: ----- */
+
+const suggest = { seq: 0, timer: null, emojis: null, emojiLoad: null };
+
+function hideSuggest() {
+  suggest.seq++;
+  clearTimeout(suggest.timer);
+  const box = $('#suggest');
+  box.hidden = true;
+  box.replaceChildren();
+}
+
+function suggestToken() {
+  const t = $('#text');
+  const pos = t.selectionStart;
+  if (pos == null || pos !== t.selectionEnd) return null;
+  const m = /(^|[\s(])([@#:])([\p{L}\p{N}_.@\-]*)$/u.exec(t.value.slice(0, pos));
+  if (!m) return null;
+  const kind = m[2], q = m[3];
+  if (kind === ':' && q.length < 2) return null;
+  if (kind === '@' && q.length < 1) return null;
+  if (kind === '#' && q.length < 1) return null;
+  return { kind, q, start: pos - q.length - 1, end: pos };
+}
+
+async function loadEmojis() {
+  if (suggest.emojis) return suggest.emojis;
+  if (!suggest.emojiLoad) suggest.emojiLoad = api('/api/v1/custom_emojis').then((l) => { suggest.emojis = l.filter((e) => e.visible_in_picker !== false); return suggest.emojis; }).catch(() => { suggest.emojis = []; return []; });
+  return suggest.emojiLoad;
+}
+
+function suggestUpdate() {
+  const tok = suggestToken();
+  if (!tok || !$('#composer').open) { hideSuggest(); return; }
+  const seq = ++suggest.seq;
+  clearTimeout(suggest.timer);
+  suggest.timer = setTimeout(async () => {
+    let items = [];
+    try {
+      if (tok.kind === '@') {
+        const r = await api('/api/v1/accounts/search', { params: { q: tok.q, limit: 6, resolve: false } });
+        items = r.map((x) => ({ insert: `@${x.acct}`, label: nameNode(x), sub: `@${x.acct}`, img: x.avatar_static || x.avatar, round: true }));
+      } else if (tok.kind === '#') {
+        const r = await api('/api/v2/search', { params: { q: tok.q, type: 'hashtags', limit: 6 } });
+        items = (r.hashtags || []).map((x) => ({ insert: `#${x.name}`, label: `#${x.name}`, sub: '' }));
+        if (!items.some((i) => i.insert.toLowerCase() === `#${tok.q.toLowerCase()}`)) items.push({ insert: `#${tok.q}`, label: `#${tok.q}`, sub: '' });
+      } else {
+        const q = tok.q.toLowerCase();
+        const all = await loadEmojis();
+        const starts = all.filter((e) => e.shortcode.toLowerCase().startsWith(q));
+        const has = all.filter((e) => !e.shortcode.toLowerCase().startsWith(q) && e.shortcode.toLowerCase().includes(q));
+        items = starts.concat(has).slice(0, 8).map((e) => ({ insert: `:${e.shortcode}:`, label: `:${e.shortcode}:`, sub: '', img: e.static_url || e.url }));
+      }
+    } catch { items = []; }
+    if (seq !== suggest.seq) return; // chegou depois de o texto mudar
+    const box = $('#suggest');
+    if (!items.length) { box.hidden = true; box.replaceChildren(); return; }
+    box.replaceChildren(...items.map((it) => h('button', { type: 'button', class: 'sg-item', onclick: () => suggestPick(tok, it) },
+      it.img ? h('img', { class: it.round ? 'avatar' : 'emoji-img', src: safeUrl(it.img), alt: '' }) : null,
+      h('span', { class: 'sg-text' }, h('strong', {}, it.label), it.sub ? h('span', { class: 'muted small' }, it.sub) : null))));
+    box.hidden = false;
+    box.scrollLeft = 0;
+  }, tok.kind === ':' ? 0 : 180);
+}
+
+function suggestPick(tok, it) {
+  const t = $('#text');
+  const cur = suggestToken(); // o texto pode ter mudado desde a busca
+  const at = cur && cur.kind === tok.kind ? cur : tok;
+  const after = t.value.slice(at.end);
+  const ins = it.insert + (after.startsWith(' ') ? '' : ' ');
+  t.value = t.value.slice(0, at.start) + ins + after;
+  const caret = at.start + it.insert.length + 1;
+  t.setSelectionRange(caret, caret);
+  hideSuggest();
+  t.dispatchEvent(new Event('input'));
+  t.focus();
 }
 
 function updateCount() {
@@ -3136,7 +3230,7 @@ function bindUi() {
     window.visualViewport.addEventListener('resize', fitComposer);
     window.visualViewport.addEventListener('scroll', fitComposer);
   }
-  $('#composer').addEventListener('close', closeVisMenu);
+  $('#composer').addEventListener('close', () => { closeVisMenu(); hideSuggest(); });
   // não deixa os botões da barra tirarem o foco do texto (o teclado não fecha)
   $('#compose-tools').addEventListener('pointerdown', (e) => { if (!e.target.closest('input, textarea')) e.preventDefault(); });
   $('#vis-btn').addEventListener('click', () => {
@@ -3147,7 +3241,10 @@ function bindUi() {
   $('#cw-btn').addEventListener('click', () => { setCw($('#cw').hidden); saveDraft(); });
   document.addEventListener('click', (e) => { if (!e.target.closest('.menu-wrap')) closeVisMenu(); });
   $('#compose-form').addEventListener('submit', submitCompose);
-  $('#text').addEventListener('input', () => { updateCount(); saveDraft(); });
+  $('#text').addEventListener('input', () => { updateCount(); saveDraft(); suggestUpdate(); });
+  $('#text').addEventListener('keyup', (e) => { if (e.key.startsWith('Arrow')) suggestUpdate(); });
+  $('#text').addEventListener('click', suggestUpdate);
+  $('#suggest').addEventListener('pointerdown', (e) => e.preventDefault());
   $('#cw').addEventListener('input', saveDraft);
   $('#media-btn').addEventListener('click', () => $('#media-input').click());
   $('#media-input').addEventListener('change', (ev) => { const fs = [...ev.target.files]; ev.target.value = ''; addMedia(fs); });
