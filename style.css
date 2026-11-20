@@ -425,3 +425,8 @@ img.emoji { height: 1.2em; width: auto; vertical-align: -0.25em; }
 .thread-item.reply { padding-left: calc(var(--d) * 12px); }
 .thread-item.reply .status { border-left: 2px solid var(--border); }
 .focal-date { margin: 10px 0 0; }
+
+/* Publicar fica na barra de baixo, ao alcance do polegar */
+.compose-tools { gap: 6px; }
+.compose-tools #count { margin-right: 6px; }
+.compose-tools #post-btn { min-height: 40px; padding: 0 18px; }
