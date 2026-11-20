@@ -437,3 +437,7 @@ img.emoji { height: 1.2em; width: auto; vertical-align: -0.25em; }
 #cancel-compose .grabber { width: 44px; height: 5px; border-radius: 3px; background: var(--border); }
 dialog#composer.dragging { transition: none; }
 dialog#composer.settling { transition: transform .22s ease; }
+
+html:has(dialog#composer[open]), body:has(dialog#composer[open]) { overflow: hidden; overscroll-behavior: none; }
+dialog#composer { overscroll-behavior: contain; }
+#vis-menu { overscroll-behavior: contain; }

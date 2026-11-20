@@ -1110,6 +1110,13 @@ function setCw(on) {
 // cabeçalho (Cancelar/Publicar) não ficar sob a barra de status.
 // Arrastar a alça para baixo fecha o compositor (o rascunho fica guardado); tocar nela também fecha.
 function bindComposerSwipe() {
+  // com o compositor aberto, a página de trás não rola nem "estica": só o texto pode rolar
+  document.addEventListener('touchmove', (e) => {
+    if (!$('#composer').open) return;
+    const ta = e.target.closest && e.target.closest('#text');
+    if (ta && ta.scrollHeight > ta.clientHeight) return;
+    e.preventDefault();
+  }, { passive: false });
   const dlg = $('#composer');
   const head = $('#compose-head');
   let y0 = null, dy = 0, moved = false, t0 = 0;
