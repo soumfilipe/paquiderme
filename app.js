@@ -25,6 +25,7 @@ const store = {
 
 let session = null; // { host, token, account }
 
+const mkSearch = () => ({ q: '', type: '', res: null, loading: false, error: null, more: false });
 const mkList = () => ({ items: [], more: true, loading: false, error: null });
 const mkState = () => ({
   tab: 'home',
@@ -34,6 +35,7 @@ const mkState = () => ({
   global: mkList(),
   other: mkList(),
   tag: mkList(),
+  search: mkSearch(),
   trends: { tags: [], statuses: [], loading: false, error: null, loaded: false },
   profiles: [],        // pilha de telas (perfis, conversas, listas) abertas por cima da aba atual
   lists: { items: [], loaded: false, loading: false, error: null },
@@ -190,6 +192,7 @@ async function logout({ revoke = true, message = '' } = {}) {
       } catch { /* segue mesmo se falhar */ }
     }
   }
+  clearCaches();
   store.del('session');
   session = null;
   state = mkState();
@@ -244,6 +247,8 @@ function nameNode(account) {
 }
 
 function paintAction(btn, icon, count, on) {
+  if (!btn.dataset.label) btn.dataset.label = btn.getAttribute('aria-label') || '';
+  if (btn.dataset.label) btn.setAttribute('aria-label', count ? `${btn.dataset.label}, ${count}` : btn.dataset.label);
   btn.replaceChildren(svgIcon(icon, 20), h('span', { class: 'count' }, count ? String(count) : ''));
   btn.classList.toggle('on', !!on);
   btn.setAttribute('aria-pressed', on ? 'true' : 'false');
@@ -428,7 +433,7 @@ async function statusMenu(sh) {
 function mediaEl(sh) {
   const items = (sh.media_attachments || []).filter((m) => safeUrl(m.url));
   if (!items.length) return null;
-  const wrap = h('div', { class: `media${items.length === 1 ? ' one' : ''}${sh.sensitive ? ' sensitive' : ''}` });
+  const wrap = h('div', { class: `media${items.length === 1 ? ' one' : ''}${sh.sensitive && !prefs.showSensitive ? ' sensitive' : ''}` });
   for (const m of items) {
     const src = safeUrl(m.url);
     const preview = safeUrl(m.preview_url || '');
@@ -447,7 +452,7 @@ function mediaEl(sh) {
     }
     wrap.append(node);
   }
-  if (sh.sensitive) {
+  if (sh.sensitive && !prefs.showSensitive) {
     wrap.title = 'Conteúdo sensível — toque para mostrar';
     wrap.addEventListener('click', () => wrap.classList.remove('sensitive'), { once: true });
   }
@@ -483,7 +488,7 @@ function statusEl(s, { readonly = false, host = null } = {}) {
 
   if (sh.spoiler_text) {
     const summary = h('summary', {}, emojiFragment(sh.spoiler_text, sh.emojis));
-    el.append(h('details', { class: 'cw' }, summary, ...parts));
+    el.append(h('details', { class: 'cw', open: prefs.openCw || null }, summary, ...parts));
   } else {
     el.append(...parts);
   }
@@ -618,6 +623,122 @@ function threadView(view, t) {
   } else if (t.loaded && !t.descendants.length) {
     view.append(h('p', { class: 'empty' }, t.ancestors.length ? 'Sem respostas ainda.' : 'Ninguém respondeu ainda.'));
   }
+}
+
+/* ---------- Cache local (abrir offline e voltar de onde parou) ---------- */
+
+const CACHE_KINDS = ['home', 'notifications'];
+const CACHE_MAX = 40;
+const cacheKey = (kind) => `cache.${session.host}.${session.account.id}.${kind}`;
+
+function saveCache(kind) {
+  if (!session || !CACHE_KINDS.includes(kind)) return;
+  const st = state[kind];
+  if (st.cached) return; // ainda mostrando o que veio do cache: não regrava por cima
+  store.set(cacheKey(kind), { at: Date.now(), items: st.items.slice(0, CACHE_MAX) });
+}
+
+function hydrateFromCache(kind) {
+  const st = state[kind];
+  if (st.items.length) return false;
+  const c = store.get(cacheKey(kind));
+  if (!c || !Array.isArray(c.items) || !c.items.length) return false;
+  st.items = c.items;
+  st.more = true;
+  st.cached = true;
+  st.cachedAt = c.at;
+  return true;
+}
+
+function clearCaches() {
+  try {
+    Object.keys(localStorage).filter((k) => k.startsWith('pq.cache.') || k.startsWith('pq.scroll.')).forEach((k) => localStorage.removeItem(k));
+  } catch { /* ignora */ }
+}
+
+function saveScroll() {
+  if (!session || state.profiles.length) return;
+  const kind = state.tab === 'home' && !state.homeList ? 'home' : state.tab === 'notifications' ? 'notifications' : null;
+  if (kind) store.set(`scroll.${kind}`, Math.round(window.scrollY));
+}
+
+// Traz publicações novas por cima do que está guardado, sem mexer onde o usuário está lendo
+async function refreshWithCache(kind) {
+  const st = state[kind];
+  const spec = listSpec(kind);
+  const y0 = window.scrollY;
+  const h0 = document.documentElement.scrollHeight;
+  st.loading = true; st.error = null;
+  render();
+  try {
+    const data = await api(spec.path, { params: { limit: 30 } });
+    const have = new Set(st.items.map((s) => s.id));
+    const overlaps = data.some((s) => have.has(s.id));
+    if (overlaps || !st.items.length) {
+      const fresh = data.filter((s) => !have.has(s.id));
+      st.items = fresh.concat(st.items);
+    } else {
+      st.items = data; // muito tempo fora: lacuna entre o guardado e o novo, recomeça do topo
+      st.cleanSlate = true;
+    }
+    st.cached = false;
+    store.set(cacheKey(kind), { at: Date.now(), items: st.items.slice(0, CACHE_MAX) });
+  } catch (e) {
+    st.error = e.message; // segue mostrando o que está guardado
+  } finally {
+    st.loading = false;
+    if (session) {
+      render();
+      if (st.cleanSlate) { st.cleanSlate = false; window.scrollTo(0, 0); }
+      else window.scrollTo(0, y0 + (document.documentElement.scrollHeight - h0)); // mantém o ponto de leitura
+    }
+  }
+}
+
+/* ---------- Preferências ---------- */
+
+const PREF_DEFAULTS = { theme: 'auto', textSize: 100, motion: 'auto', showSensitive: false, openCw: false, defaultVis: '' };
+let prefs = { ...PREF_DEFAULTS, ...store.get('prefs', {}) };
+
+function applyPrefs() {
+  const root = document.documentElement;
+  if (prefs.theme === 'auto') root.removeAttribute('data-theme'); else root.dataset.theme = prefs.theme;
+  if (prefs.motion === 'reduce') root.dataset.motion = 'reduce'; else root.removeAttribute('data-motion');
+  root.style.setProperty('--text-adjust', `${prefs.textSize}%`);
+  const dark = prefs.theme === 'dark' || (prefs.theme === 'auto' && !(window.matchMedia && matchMedia('(prefers-color-scheme: light)').matches));
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.content = dark ? '#14121c' : '#f7f5fc';
+}
+
+function setPref(key, value) {
+  prefs[key] = value;
+  store.set('prefs', prefs);
+  applyPrefs();
+  render();
+}
+
+function prefChoice(label, key, options) {
+  return h('div', { class: 'pref-group', role: 'group', 'aria-label': label },
+    h('span', { class: 'muted small' }, label),
+    h('div', { class: 'seg-row' }, ...options.map(([v, text]) =>
+      h('button', { type: 'button', class: `chip${prefs[key] === v ? ' active' : ''}`, 'aria-pressed': prefs[key] === v ? 'true' : 'false', onclick: () => setPref(key, v) }, text))));
+}
+
+function prefSwitch(label, key) {
+  const on = !!prefs[key];
+  return h('button', { type: 'button', class: `pick-row${on ? ' on' : ''}`, role: 'switch', 'aria-checked': on ? 'true' : 'false', onclick: () => setPref(key, !on) },
+    h('span', { class: 'pick-box' }, on ? svgIcon('check', 16) : null), label);
+}
+
+function prefsSection() {
+  return h('div', { class: 'account-card' },
+    h('strong', {}, 'Aparência e comportamento'),
+    prefChoice('Tema', 'theme', [['auto', 'Automático'], ['light', 'Claro'], ['dark', 'Escuro']]),
+    prefChoice('Tamanho do texto', 'textSize', [[100, 'Padrão'], [112, 'Grande'], [125, 'Maior'], [140, 'Máximo']]),
+    prefChoice('Animações', 'motion', [['auto', 'Padrão do sistema'], ['reduce', 'Reduzir']]),
+    prefChoice('Visibilidade ao publicar', 'defaultVis', [['', 'Lembrar a última'], ['public', 'Pública'], ['unlisted', 'Não listada'], ['private', 'Só seguidores']]),
+    prefSwitch('Mostrar mídia sensível sem desfocar', 'showSensitive'),
+    prefSwitch('Abrir avisos de conteúdo já expandidos', 'openCw'));
 }
 
 /* ---------- Avisos no aparelho (Web Push) ---------- */
@@ -1187,6 +1308,7 @@ function settingsView(view) {
     h('button', { type: 'button', class: 'with-icon', onclick: updateApp }, svgIcon('refresh', 18), 'Atualizar o app (limpar cache)'),
     h('button', { type: 'button', class: 'with-icon', onclick: () => logout() }, svgIcon('logout', 18), 'Sair'),
     h('p', { class: 'muted small' }, `${APP_NAME} · cliente estático, sem servidor próprio. O token fica só neste aparelho.`)));
+  view.append(prefsSection());
   view.append(pushSection());
   view.append(h('div', { class: 'account-card' },
     h('strong', {}, 'Moderação pessoal'),
@@ -1273,6 +1395,7 @@ const SEGMENTS = [
   ['global', 'Global'],
   ['trends', 'Em alta'],
   ['other', 'Outras'],
+  ['search', 'Buscar'],
 ];
 
 function getList(kind) {
@@ -1285,6 +1408,12 @@ function getList(kind) {
 }
 
 function renderList(view, kind, make) {
+  const st = getList(kind);
+  if (st.cached) {
+    const when = st.cachedAt ? new Date(st.cachedAt).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : '';
+    view.append(h('p', { class: 'cache-note', role: 'status' },
+      st.error ? `Sem conexão. Mostrando o que foi guardado em ${when}.` : `Mostrando o que foi guardado em ${when}. Atualizando…`));
+  }
   getList(kind).items.forEach((i) => { const n = make(i); if (n) view.append(n); });
   view.append(moreButton(kind));
 }
@@ -1336,6 +1465,76 @@ function otherView(view) {
   if (ex.otherHost) renderList(view, 'other', (s) => statusEl(s, { readonly: true, host: ex.otherHost }));
 }
 
+/* ----- Busca ----- */
+
+const SEARCH_TYPES = [['', 'Tudo'], ['accounts', 'Contas'], ['hashtags', 'Hashtags'], ['statuses', 'Publicações']];
+
+async function runSearch(append = false) {
+  const s = state.search;
+  if (!s.q || s.loading) return;
+  s.loading = true; s.error = null;
+  if (!append) busy(+1);
+  render();
+  try {
+    const params = { q: s.q, resolve: 'true', limit: s.type ? 20 : 5 };
+    if (s.type) params.type = s.type;
+    if (append && s.type) params.offset = s.res[s.type].length;
+    const r = await api('/api/v2/search', { params });
+    if (append && s.type) {
+      s.res[s.type] = s.res[s.type].concat(r[s.type] || []);
+      s.more = (r[s.type] || []).length > 0;
+    } else {
+      s.res = { accounts: r.accounts || [], hashtags: r.hashtags || [], statuses: r.statuses || [] };
+      s.more = !!s.type && (r[s.type] || []).length >= 20;
+    }
+  } catch (e) {
+    s.error = e.status === 422 || e.status === 400 ? 'A instância não aceitou esta busca.' : e.message;
+  } finally {
+    s.loading = false;
+    if (!append) busy(-1);
+    if (session) render();
+  }
+}
+
+function startSearch(q) {
+  const s = state.search;
+  s.q = q.trim();
+  s.res = null;
+  if (s.q) runSearch(); else render();
+}
+
+function searchView(view) {
+  const s = state.search;
+  const input = h('input', {
+    type: 'search', placeholder: 'Contas, hashtags, publicações ou link', value: s.q, autocapitalize: 'none', autocorrect: 'off',
+    spellcheck: 'false', enterkeyhint: 'search', 'aria-label': 'Buscar',
+  });
+  view.append(h('form', { class: 'search-form', role: 'search', onsubmit: (e) => { e.preventDefault(); input.blur(); startSearch(input.value); } },
+    input, h('button', { type: 'submit', class: 'primary' }, 'Buscar')));
+  view.append(h('div', { class: 'hosts', role: 'group', 'aria-label': 'Tipo de resultado' }, ...SEARCH_TYPES.map(([id, label]) =>
+    h('button', { type: 'button', class: `chip${s.type === id ? ' active' : ''}`, 'aria-pressed': s.type === id ? 'true' : 'false',
+      onclick: () => { s.type = id; s.res = null; if (s.q) runSearch(); else render(); } }, label))));
+  if (s.error) { view.append(h('div', { class: 'empty' }, h('p', { class: 'error' }, s.error), h('button', { type: 'button', onclick: () => runSearch() }, 'Tentar de novo'))); return; }
+  if (!s.q) { view.append(h('p', { class: 'empty' }, 'Busque por nomes, @usuario@instância, #hashtags, texto ou o link de uma publicação.')); return; }
+  if (s.loading && !s.res) { view.append(h('p', { class: 'empty' }, 'Buscando…')); return; }
+  if (!s.res) return;
+  const { accounts, hashtags, statuses } = s.res;
+  if (!accounts.length && !hashtags.length && !statuses.length) { view.append(h('p', { class: 'empty' }, 'Nada encontrado.')); return; }
+  if (accounts.length) {
+    if (!s.type) view.append(h('h3', { class: 'section' }, 'Contas'));
+    accounts.forEach((a) => view.append(accountRow(a)));
+  }
+  if (hashtags.length) {
+    if (!s.type) view.append(h('h3', { class: 'section' }, 'Hashtags'));
+    hashtags.forEach((t) => view.append(tagRow(t)));
+  }
+  if (statuses.length) {
+    if (!s.type) view.append(h('h3', { class: 'section' }, 'Publicações'));
+    statuses.forEach((st) => view.append(statusEl(st)));
+  }
+  if (s.type && s.more) view.append(h('button', { type: 'button', class: 'more', onclick: () => runSearch(true) }, s.loading ? 'Carregando…' : 'Carregar mais'));
+}
+
 function exploreView(view) {
   const ex = state.explore;
   if (ex.tag) {
@@ -1347,7 +1546,8 @@ function exploreView(view) {
   }
   view.append(h('div', { class: 'seg-bar', role: 'tablist' }, ...SEGMENTS.map(([id, label]) =>
     h('button', { type: 'button', role: 'tab', class: `chip${ex.seg === id ? ' active' : ''}`, 'aria-selected': ex.seg === id ? 'true' : 'false', onclick: () => setSeg(id) }, label))));
-  if (ex.seg === 'trends') trendsView(view);
+  if (ex.seg === 'search') searchView(view);
+  else if (ex.seg === 'trends') trendsView(view);
   else if (ex.seg === 'other') otherView(view);
   else renderList(view, ex.seg, (s) => statusEl(s));
 }
@@ -1387,7 +1587,9 @@ function goOther(raw) {
 function ensureExploreLoaded() {
   const ex = state.explore;
   const kind = ex.tag ? 'tag' : ex.seg;
-  if (kind === 'trends') {
+  if (kind === 'search') {
+    /* nada a carregar até o usuário buscar */
+  } else if (kind === 'trends') {
     if (!state.trends.loaded && !state.trends.loading) loadTrends();
   } else if (kind === 'other') {
     if (ex.otherHost && !state.other.items.length && !state.other.loading && !state.other.error) loadList('other');
@@ -1462,7 +1664,8 @@ async function loadList(kind, append = false) {
     } else {
       st.more = data.length > 0;
     }
-    if (!append) window.scrollTo(0, 0);
+    if (!append) { st.cached = false; window.scrollTo(0, 0); }
+    if (!append) saveCache(kind);
   } catch (e) {
     st.error = kind === 'other' && [401, 403, 422].includes(e.status)
       ? 'Esta instância não libera a timeline pública sem login.'
@@ -1515,7 +1718,8 @@ function refreshCurrent() {
   if (kind === 'entry') { const te = topEntry(); if (te.type === 'thread') loadThread(te); else if (te.reload) te.reload(); return; }
   if (kind === 'home' || kind === 'list') loadLists(true);
   if (kind.startsWith('p:')) loadProfile(activeProfile());
-  if (kind === 'trends') loadTrends();
+  if (kind === 'search') runSearch();
+  else if (kind === 'trends') loadTrends();
   else loadList(kind);
 }
 
@@ -1533,9 +1737,11 @@ function selectTab(tab) {
   if (tab === 'home') {
     if (!state.lists.loaded) loadLists(true);
     const k = state.homeList ? 'list' : 'home';
-    if (!getList(k).items.length && !getList(k).loading) loadList(k);
+    if (k === 'home' && hydrateFromCache('home')) { render(); window.scrollTo(0, store.get('scroll.home', 0)); refreshWithCache('home'); }
+    else if (!getList(k).items.length && !getList(k).loading) loadList(k);
   } else if (tab === 'notifications') {
-    if (!state[tab].items.length && !state[tab].loading) loadList(tab);
+    if (hydrateFromCache('notifications')) { render(); window.scrollTo(0, store.get('scroll.notifications', 0)); refreshWithCache('notifications'); }
+    else if (!state[tab].items.length && !state[tab].loading) loadList(tab);
   } else if (tab === 'explore') {
     ensureExploreLoaded();
   } else if (tab === 'account') {
@@ -1625,7 +1831,7 @@ function openComposer({ replyTo = null } = {}) {
     note.hidden = false;
   } else {
     $('#text').value = store.get('draft', '');
-    setVisibility(store.get('lastVisibility', 'public'));
+    setVisibility(prefs.defaultVis || store.get('lastVisibility', 'public'));
     note.hidden = true;
   }
   updateCount();
@@ -1808,6 +2014,15 @@ function bindUi() {
 
   document.querySelectorAll('#tabs button').forEach((b) => b.addEventListener('click', () => selectTab(b.dataset.tab)));
   bindPullToRefresh();
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') saveScroll(); });
+  window.addEventListener('pagehide', saveScroll);
+  // elementos clicáveis com role="button" (avatares, nomes) também respondem a Enter/espaço (teclado, VoiceOver)
+  document.addEventListener('keydown', (e) => {
+    if ((e.key === 'Enter' || e.key === ' ') && e.target.matches && e.target.matches('[role="button"]:not(button)')) {
+      e.preventDefault();
+      e.target.click();
+    }
+  });
   const sheet = $('#sheet');
   sheet.addEventListener('click', (e) => { if (e.target === sheet) sheet.close(); });
   if ('serviceWorker' in navigator) {
@@ -1865,6 +2080,7 @@ function bindUi() {
 }
 
 async function boot() {
+  applyPrefs();
   bindUi();
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
   const params = new URLSearchParams(location.search);

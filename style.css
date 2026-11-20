@@ -17,7 +17,7 @@
 }
 
 @media (prefers-color-scheme: light) {
-  :root {
+  :root:not([data-theme='dark']) {
     --bg: #f7f5fc;
     --surface: #ffffff;
     --surface-2: #eeeaf8;
@@ -30,6 +30,16 @@
     --boost: var(--accent);
     --fav: var(--accent);
   }
+}
+
+/* tema escolhido nas preferências (sobrepõe o do sistema) */
+:root[data-theme='light'] {
+  --bg: #f7f5fc; --surface: #ffffff; --surface-2: #eeeaf8; --text: #1d1a29; --muted: #6d6882;
+  --accent: #6d4bd6; --accent-ink: #ffffff; --border: #e1dcf0; --danger: #c0334f; color-scheme: light;
+}
+:root[data-theme='dark'] {
+  --bg: #14121c; --surface: #1d1a29; --surface-2: #272336; --text: #ece9f6; --muted: #9a96ad;
+  --accent: #b9a2ff; --accent-ink: #1a1230; --border: #2f2b40; --danger: #ff8fa3; color-scheme: dark;
 }
 
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -485,3 +495,19 @@ dialog#sheet::backdrop { background: rgb(0 0 0 / .5); }
 .sheet-form { padding: 4px 12px 8px; display: flex; flex-direction: column; gap: 10px; }
 .sheet-text { width: 100%; resize: none; }
 .sheet-check { font-size: 14px; display: flex; gap: 8px; align-items: center; }
+
+/* Preferências e acessibilidade */
+html { -webkit-text-size-adjust: var(--text-adjust, 100%); text-size-adjust: var(--text-adjust, 100%); }
+html[data-motion='reduce'] *, html[data-motion='reduce'] *::before, html[data-motion='reduce'] *::after {
+  animation: none !important; transition: none !important; scroll-behavior: auto !important;
+}
+.actions button { min-height: 44px; }
+.icon-btn { min-width: 44px; min-height: 44px; }
+.chip { min-height: 36px; }
+.status { content-visibility: auto; contain-intrinsic-size: auto 180px; }
+.status.focal, .pinned .status { content-visibility: visible; }
+.cache-note { margin: 0; padding: 8px 16px; font-size: 13px; color: var(--muted); background: var(--surface-2); border-bottom: 1px solid var(--border); }
+.pref-group { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
+.pref-group .seg-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.search-form { display: flex; gap: 8px; padding: 12px 16px 4px; }
+.search-form input { flex: 1; min-width: 0; }
