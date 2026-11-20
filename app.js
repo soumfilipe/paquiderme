@@ -1577,8 +1577,31 @@ async function loadLists(quiet = false) {
   }
 }
 
+/* ----- Aviso rápido de problema no topo do Início ----- */
+const alarm = { text: '', level: '', timer: null };
+async function quickHealth() {
+  if (!session) return;
+  let text = '';
+  if (!navigator.onLine) text = 'Sem conexão com a internet.';
+  else {
+    try {
+      const ctl = new AbortController();
+      const to = setTimeout(() => ctl.abort(), 8000);
+      const r = await fetch(`https://${session.host}/api/v2/instance`, { cache: 'no-store', signal: ctl.signal });
+      clearTimeout(to);
+      if (r.status >= 500) text = `${session.host} está com problemas (erro ${r.status}).`;
+      else {
+        try { await api('/api/v1/accounts/verify_credentials'); } catch (e) { if ([401, 403].includes(e.status)) text = 'Sua sessão expirou. Entre de novo nesta conta.'; }
+      }
+    } catch { text = `Não foi possível falar com ${session.host}.`; }
+  }
+  if (text !== alarm.text) { alarm.text = text; if (session && state.tab === 'home' && !state.profiles.length) render(); }
+}
+function scheduleQuickHealth(ms = 1500) { clearTimeout(alarm.timer); alarm.timer = setTimeout(quickHealth, ms); }
+
 function homeView(view) {
   const L = state.lists;
+  if (alarm.text) view.append(h('div', { class: 'alarm', role: 'status' }, h('span', {}, alarm.text), h('button', { type: 'button', class: 'link', onclick: openHealth }, 'Ver status')));
   const chip = (id, label, extra) => h('button', {
     type: 'button', role: 'tab', class: `chip${(state.homeList || '') === id ? ' active' : ''}`,
     'aria-selected': (state.homeList || '') === id ? 'true' : 'false', onclick: () => setHomeList(id),
@@ -3578,6 +3601,7 @@ async function startApp() {
   if (go) history.replaceState(null, '', location.pathname);
   selectTab(go === 'notifications' ? 'notifications' : 'home');
   checkUnread();
+  scheduleQuickHealth(3000);
   const shared = store.get('share');
   if (shared) { store.del('share'); openComposer({ share: shared }); }
   try {
@@ -3617,9 +3641,10 @@ function bindUi() {
   document.querySelectorAll('#tabs button').forEach((b) => b.addEventListener('click', () => selectTab(b.dataset.tab)));
   bindPullToRefresh();
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'hidden') { saveScroll(); liveClose(); live.wasHidden = true; } else { checkUnread(); liveConnect(); }
+    if (document.visibilityState === 'hidden') { saveScroll(); liveClose(); live.wasHidden = true; } else { checkUnread(); liveConnect(); scheduleQuickHealth(); }
   });
-  window.addEventListener('online', () => { if (!live.ws) { live.tries = 0; liveConnect(); } });
+  window.addEventListener('offline', () => scheduleQuickHealth(100));
+  window.addEventListener('online', () => { scheduleQuickHealth(500); if (!live.ws) { live.tries = 0; liveConnect(); } });
   $('#new-pill').addEventListener('click', showNewPosts);
   window.addEventListener('pagehide', saveScroll);
   window.addEventListener('scroll', scheduleMarker, { passive: true });
