@@ -3,6 +3,9 @@ import {
   sanitizeHtml, emojiFragment, safeUrl, timeAgo, h, svgIcon, sparkline, parseNextMaxId,
 } from './lib.js';
 
+// anti-clickjacking: o GitHub Pages não permite cabeçalhos (frame-ancestors), então o app se recusa a rodar dentro de um iframe
+if (window.top !== window.self) { document.documentElement.hidden = true; try { window.top.location = window.self.location; } catch { /* sem permissão: fica oculto */ } }
+
 const APP_NAME = 'Paquiderme';
 const SCOPES = 'read write push';
 // Diretório onde o app está publicado (funciona em /, em subpasta e em domínio próprio)
