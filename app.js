@@ -538,7 +538,7 @@ async function statusMenu(sh) {
   items.push({ label: 'Copiar link', icon: 'copy', onclick: async () => {
     try { await navigator.clipboard.writeText(url); toast('Link copiado'); } catch { toast(url); }
   } });
-  if (navigator.share) items.push({ label: 'Compartilhar…', icon: 'share', onclick: async () => {
+  if (navigator.share && (sh.visibility === 'public' || sh.visibility === 'unlisted')) items.push({ label: 'Compartilhar…', icon: 'share', onclick: async () => {
     try { await navigator.share({ url, text: plainText(sh.content).slice(0, 200) }); } catch { /* cancelado */ }
   } });
   items.push({ label: 'Abrir original', icon: 'external', href: url });
@@ -800,7 +800,7 @@ function notificationsView(view) {
   else renderList(view, 'notifications', notifItem, groupNotifs);
 }
 
-const plainText = (html) => { const d = document.createElement('div'); d.innerHTML = html || ''; d.querySelectorAll('br').forEach((b) => b.replaceWith(' ')); return (d.textContent || '').replace(/\s+/g, ' ').trim(); };
+const plainText = (html) => { const d = new DOMParser().parseFromString(html || '', 'text/html').body; d.querySelectorAll('br').forEach((b) => b.replaceWith(' ')); return (d.textContent || '').replace(/\s+/g, ' ').trim(); };
 
 function convEl(c) {
   const last = c.last_status;
@@ -941,11 +941,15 @@ const CACHE_KINDS = ['home', 'notifications'];
 const CACHE_MAX = 40;
 const cacheKey = (kind) => `cache.${session.host}.${session.account.id}.${kind}`;
 
+// mensagens diretas nunca ficam guardadas no aparelho (nem no cache de avisos)
+const isDirect = (it) => ((it.status || it).visibility === 'direct') || (it.reblog && it.reblog.visibility === 'direct');
+const cacheable = (items) => items.filter((it) => !isDirect(it)).slice(0, CACHE_MAX);
+
 function saveCache(kind) {
   if (!session || !CACHE_KINDS.includes(kind)) return;
   const st = state[kind];
   if (st.cached) return; // ainda mostrando o que veio do cache: não regrava por cima
-  store.set(cacheKey(kind), { at: Date.now(), items: st.items.slice(0, CACHE_MAX) });
+  store.set(cacheKey(kind), { at: Date.now(), items: cacheable(st.items) });
 }
 
 function hydrateFromCache(kind) {
@@ -961,7 +965,7 @@ function hydrateFromCache(kind) {
 }
 
 function clearCaches(s) {
-  const pre = s ? [`pq.cache.${s.host}.${s.account.id}.`, `pq.scroll.${s.host}.${s.account.id}.`] : ['pq.cache.', 'pq.scroll.'];
+  const pre = s ? [`pq.cache.${s.host}.${s.account.id}.`, `pq.scroll.${s.host}.${s.account.id}.`, `pq.mark.${s.host}.${s.account.id}`, `pq.draft.${s.host}.${s.account.id}`] : ['pq.cache.', 'pq.scroll.', 'pq.mark.', 'pq.draft.'];
   try {
     Object.keys(localStorage).filter((k) => pre.some((p) => k.startsWith(p))).forEach((k) => localStorage.removeItem(k));
   } catch { /* ignora */ }
@@ -1062,7 +1066,7 @@ async function refreshWithCache(kind) {
       st.cleanSlate = true;
     }
     st.cached = false;
-    store.set(cacheKey(kind), { at: Date.now(), items: st.items.slice(0, CACHE_MAX) });
+    store.set(cacheKey(kind), { at: Date.now(), items: cacheable(st.items) });
     if (kind === 'notifications' && state.tab === 'notifications') markNotificationsRead();
   } catch (e) {
     st.error = e.message; // segue mostrando o que está guardado
@@ -3101,10 +3105,12 @@ let limits = { translation: false, maxChars: 500, maxMedia: 4, pollOptions: 4, p
 
 const LANGS = [['', 'Automático (padrão da conta)'], ['pt', 'Português'], ['en', 'English'], ['es', 'Español'], ['fr', 'Français'], ['de', 'Deutsch'], ['it', 'Italiano'], ['ja', '日本語'], ['zh', '中文'], ['ru', 'Русский'], ['ar', 'العربية']];
 
+const draftKey = () => `draft.${session.host}.${session.account.id}`;
+
 function saveDraft() {
   if (compose.replyTo || compose.edit) return;
   const cw = $('#cw');
-  store.set('draft', { text: $('#text').value, cw: cw.hidden ? '' : cw.value, poll: compose.poll, lang: compose.lang });
+  store.set(draftKey(), { text: $('#text').value, cw: cw.hidden ? '' : cw.value, poll: compose.poll, lang: compose.lang });
 }
 
 function openComposer({ replyTo = null, edit = null, share = '', quote = null } = {}) {
@@ -3149,7 +3155,7 @@ function openComposer({ replyTo = null, edit = null, share = '', quote = null } 
     note.textContent = `Citando @${quote.account.acct}: ${plainText(quote.content).slice(0, 80)}`;
     note.hidden = false;
   } else {
-    let d = store.get('draft', '');
+    let d = store.get(draftKey(), '');
     if (typeof d === 'string') d = { text: d };
     $('#text').value = (d && d.text) || '';
     if (d && d.cw) { setCw(true); $('#cw').value = d.cw; }
@@ -3533,7 +3539,7 @@ async function submitCompose(e) {
           scheduled_at: compose.scheduledAt || undefined,
         },
       });
-      if (!compose.replyTo && !compose.quote) { store.del('draft'); store.set('lastVisibility', composeVis); }
+      if (!compose.replyTo && !compose.quote) { store.del(draftKey()); store.set('lastVisibility', composeVis); }
     }
     $('#composer').close();
     toast(compose.edit ? 'Publicação editada' : compose.scheduledAt ? `Agendada para ${new Date(compose.scheduledAt).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}` : 'Publicado');
@@ -3655,6 +3661,7 @@ function bindUi() {
       e.target.click();
     }
   });
+  store.del('draft'); // rascunho antigo, sem dono: agora é guardado por conta
   document.addEventListener('keydown', shortcutKey);
   const sheet = $('#sheet');
   sheet.addEventListener('click', (e) => { if (e.target === sheet) sheet.close(); });
