@@ -511,3 +511,9 @@ html[data-motion='reduce'] *, html[data-motion='reduce'] *::before, html[data-mo
 .pref-group .seg-row { display: flex; flex-wrap: wrap; gap: 8px; }
 .search-form { display: flex; gap: 8px; padding: 12px 16px 4px; }
 .search-form input { flex: 1; min-width: 0; }
+
+/* Sino com avisos não lidos */
+@keyframes bellring { 0% { transform: rotate(0); } 12% { transform: rotate(20deg); } 28% { transform: rotate(-18deg); } 44% { transform: rotate(14deg); } 60% { transform: rotate(-10deg); } 76% { transform: rotate(5deg); } 100% { transform: rotate(0); } }
+.ico.ring { animation: bellring 1s ease-in-out 1; transform-origin: 50% 12%; }
+#tabs button { position: relative; }
+#tabs button.unread::after { content: ''; position: absolute; top: 8px; left: calc(50% + 6px); width: 9px; height: 9px; border-radius: 50%; background: var(--accent); border: 2px solid var(--bg); box-sizing: content-box; }

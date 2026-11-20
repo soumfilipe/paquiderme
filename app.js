@@ -683,6 +683,7 @@ async function refreshWithCache(kind) {
     }
     st.cached = false;
     store.set(cacheKey(kind), { at: Date.now(), items: st.items.slice(0, CACHE_MAX) });
+    if (kind === 'notifications' && state.tab === 'notifications') markNotificationsRead();
   } catch (e) {
     st.error = e.message; // segue mostrando o que está guardado
   } finally {
@@ -693,6 +694,66 @@ async function refreshWithCache(kind) {
       else window.scrollTo(0, y0 + (document.documentElement.scrollHeight - h0)); // mantém o ponto de leitura
     }
   }
+}
+
+/* ---------- Avisos não lidos (sino) ---------- */
+
+const bellSlot = () => document.querySelector('#tabs button[data-tab="notifications"] [data-icon]');
+let ringing = false;
+
+// Um ciclo do sino tocando e volta ao ícone normal (o pontinho de "não lido" fica na aba)
+function ringBell() {
+  const slot = bellSlot();
+  if (!slot || ringing) return;
+  ringing = true;
+  const ring = svgIcon('notifications-ring', Number(slot.dataset.size) || 24);
+  ring.classList.add('ring');
+  slot.replaceChildren(ring);
+  let done = false;
+  const finish = () => {
+    if (done) return;
+    done = true; ringing = false;
+    slot.replaceChildren(svgIcon('notifications', Number(slot.dataset.size) || 24));
+  };
+  ring.addEventListener('animationend', finish, { once: true });
+  setTimeout(finish, 1800); // sem animação (reduzir movimento) o ícone também volta
+}
+
+function setUnread(on) {
+  const btn = document.querySelector('#tabs button[data-tab="notifications"]');
+  if (btn) {
+    btn.classList.toggle('unread', on);
+    btn.setAttribute('aria-label', on ? 'Avisos, há não lidos' : 'Avisos');
+  }
+}
+
+const idGt = (a, b) => { try { return BigInt(a) > BigInt(b); } catch { return String(a) > String(b); } };
+
+async function checkUnread() {
+  if (!session || state.tab === 'notifications') return;
+  try {
+    const [m, latest] = await Promise.all([
+      api('/api/v1/markers', { params: { 'timeline[]': ['notifications'] } }).catch(() => ({})),
+      api('/api/v1/notifications', { params: { limit: 1 } }),
+    ]);
+    const newest = latest[0] && latest[0].id;
+    if (!newest) { setUnread(false); return; }
+    const marker = m && m.notifications && m.notifications.last_read_id;
+    const local = store.get('seenNotif');
+    if (!marker && !local) { store.set('seenNotif', newest); setUnread(false); return; } // primeira vez: não toca por avisos antigos
+    const seen = [marker, local].filter(Boolean).reduce((x, y) => (idGt(x, y) ? x : y));
+    const unread = idGt(newest, seen);
+    setUnread(unread);
+    if (unread && state.tab !== 'notifications') ringBell();
+  } catch { /* sem rede: mantém como está */ }
+}
+
+function markNotificationsRead() {
+  const newest = state.notifications.items[0] && state.notifications.items[0].id;
+  setUnread(false);
+  if (!newest) return;
+  store.set('seenNotif', newest);
+  api('/api/v1/markers', { method: 'POST', body: { notifications: { last_read_id: newest } } }).catch(() => {});
 }
 
 /* ---------- Preferências ---------- */
@@ -1666,6 +1727,7 @@ async function loadList(kind, append = false) {
     }
     if (!append) { st.cached = false; window.scrollTo(0, 0); }
     if (!append) saveCache(kind);
+    if (kind === 'notifications' && !append && state.tab === 'notifications') markNotificationsRead();
   } catch (e) {
     st.error = kind === 'other' && [401, 403, 422].includes(e.status)
       ? 'Esta instância não libera a timeline pública sem login.'
@@ -1725,6 +1787,7 @@ function refreshCurrent() {
 
 function selectTab(tab) {
   state.tab = tab;
+  if (tab === 'notifications') setUnread(false);
   state.profiles = [];
   state.settingsOpen = false;
   if (tab === 'account' && !state.me) state.me = mkProfile(session.account);
@@ -1985,6 +2048,7 @@ async function startApp() {
   const go = new URL(location.href).searchParams.get('go');
   if (go) history.replaceState(null, '', location.pathname);
   selectTab(go === 'notifications' ? 'notifications' : 'home');
+  checkUnread();
   try {
     const res = await fetch(`https://${session.host}/api/v1/instance`);
     const max = (await res.json())?.configuration?.statuses?.max_characters;
@@ -2014,7 +2078,7 @@ function bindUi() {
 
   document.querySelectorAll('#tabs button').forEach((b) => b.addEventListener('click', () => selectTab(b.dataset.tab)));
   bindPullToRefresh();
-  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') saveScroll(); });
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') saveScroll(); else checkUnread(); });
   window.addEventListener('pagehide', saveScroll);
   // elementos clicáveis com role="button" (avatares, nomes) também respondem a Enter/espaço (teclado, VoiceOver)
   document.addEventListener('keydown', (e) => {
