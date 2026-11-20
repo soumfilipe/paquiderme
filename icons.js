@@ -1125,5 +1125,27 @@ export const ICONS = {
     "stroke-width": "1.5"
    }
   ]
+ ],
+ "clock": [
+  [
+   "circle",
+   {
+    "cx": "12",
+    "cy": "12",
+    "r": "10",
+    "stroke": "currentColor",
+    "stroke-width": "1.5"
+   }
+  ],
+  [
+   "path",
+   {
+    "d": "M12 8V12L14 14",
+    "stroke": "currentColor",
+    "stroke-linecap": "round",
+    "stroke-linejoin": "round",
+    "stroke-width": "1.5"
+   }
+  ]
  ]
 };

@@ -366,7 +366,7 @@ function openSheet(title, items, content) {
     content || null,
     ...items.map((it) => it.href
       ? h('a', { class: 'sheet-item', href: safeUrl(it.href), target: '_blank', rel: 'noopener noreferrer', onclick: () => d.close() }, it.icon ? svgIcon(it.icon, 20) : null, it.label)
-      : h('button', { type: 'button', class: `sheet-item${it.danger ? ' danger' : ''}`, onclick: async () => { d.close(); await it.onclick(); } }, it.icon ? svgIcon(it.icon, 20) : null, it.label)),
+      : h('button', { type: 'button', class: `sheet-item${it.danger ? ' danger' : ''}`, onclick: async () => { if (it.keepOpen) { if (await it.onclick() !== false) d.close(); return; } d.close(); await it.onclick(); } }, it.icon ? svgIcon(it.icon, 20) : null, it.label)),
     h('button', { type: 'button', class: 'sheet-item cancel', onclick: () => d.close() }, 'Cancelar')));
   if (!d.open) d.showModal();
 }
@@ -1504,6 +1504,7 @@ function entryView(view, e) {
   else if (e.type === 'accounts') accountsEntryView(view, e);
   else if (e.type === 'editprofile') editProfileView(view, e);
   else if (e.type === 'filters') filtersView(view, e);
+  else if (e.type === 'scheduled') scheduledView(view, e);
   else if (e.type === 'filteredit') filterEditView(view, e);
 }
 
@@ -1775,6 +1776,47 @@ function filtersView(view, e) {
             e.items = e.items.filter((x) => x.id !== f.id); e.confirm = null; render();
           } catch (err) { toast(err.message); }
         } }, confirming ? 'Confirmar' : 'Excluir'))));
+  });
+}
+
+function openScheduled() {
+  const e = { type: 'scheduled', items: [], loaded: false, error: null, confirm: null };
+  e.reload = () => loadScheduled(e);
+  pushEntry(e);
+  loadScheduled(e);
+}
+
+async function loadScheduled(e) {
+  e.error = null; busy(+1); render();
+  try {
+    e.items = await api('/api/v1/scheduled_statuses');
+    e.loaded = true;
+  } catch (err) { e.error = err.message; } finally {
+    busy(-1);
+    if (session && state.profiles.includes(e)) render();
+  }
+}
+
+function scheduledView(view, e) {
+  view.append(profileBar('Publicações agendadas', closeProfile));
+  if (e.error) { view.append(h('div', { class: 'empty' }, h('p', { class: 'error' }, e.error), h('button', { type: 'button', onclick: () => e.reload() }, 'Tentar de novo'))); return; }
+  if (!e.loaded) { view.append(h('p', { class: 'empty' }, 'Carregando…')); return; }
+  if (!e.items.length) { view.append(h('p', { class: 'empty' }, 'Nenhuma publicação agendada.')); return; }
+  e.items.forEach((it) => {
+    const confirming = e.confirm === it.id;
+    const p = it.params || {};
+    view.append(h('div', { class: 'filter-row' },
+      h('div', { class: 'filter-info' },
+        h('strong', {}, new Date(it.scheduled_at).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })),
+        h('span', {}, p.text || (it.media_attachments && it.media_attachments.length ? '(mídia)' : ''))),
+      h('div', { class: 'filter-actions' },
+        h('button', { type: 'button', class: confirming ? 'danger' : '', onclick: async () => {
+          if (!confirming) { e.confirm = it.id; render(); setTimeout(() => { if (e.confirm === it.id) { e.confirm = null; if (topEntry() === e) render(); } }, 4000); return; }
+          try {
+            await api(`/api/v1/scheduled_statuses/${it.id}`, { method: 'DELETE' });
+            e.items = e.items.filter((x) => x.id !== it.id); e.confirm = null; render();
+          } catch (err) { toast(err.message); }
+        } }, confirming ? 'Confirmar' : 'Cancelar'))));
   });
 }
 
@@ -2241,8 +2283,9 @@ function settingsView(view) {
   view.append(pushSection());
   view.append(shareSection());
   view.append(h('div', { class: 'account-card' },
-    h('strong', {}, 'Moderação pessoal'),
+    h('strong', {}, 'Conta e moderação'),
     h('button', { type: 'button', class: 'with-icon', onclick: openFilters }, svgIcon('filter', 18), 'Filtros de palavras'),
+    h('button', { type: 'button', class: 'with-icon', onclick: openScheduled }, svgIcon('clock', 18), 'Publicações agendadas'),
     h('button', { type: 'button', class: 'with-icon', onclick: () => openAccountsEntry('Contas silenciadas', '/api/v1/mutes', 'unmute', 'Reativar') }, svgIcon('mute', 18), 'Contas silenciadas'),
     h('button', { type: 'button', class: 'with-icon', onclick: () => openAccountsEntry('Contas bloqueadas', '/api/v1/blocks', 'unblock', 'Desbloquear') }, svgIcon('block', 18), 'Contas bloqueadas')));
 }
@@ -2833,7 +2876,7 @@ function bindPullToRefresh() {
 
 /* ---------- Compositor ---------- */
 
-const mkCompose = () => ({ replyTo: null, edit: null, key: null, media: [], poll: null, sensitive: false, lang: store.get('lang', '') });
+const mkCompose = () => ({ replyTo: null, edit: null, key: null, media: [], poll: null, sensitive: false, scheduledAt: '', lang: store.get('lang', '') });
 let compose = mkCompose();
 let limits = { translation: false, maxChars: 500, maxMedia: 4, pollOptions: 4, pollChars: 50, pollMin: 300, pollMax: 2629746 };
 
@@ -2913,6 +2956,8 @@ function renderComposeExtras() {
     return thumb;
   }));
   $('#sens-btn').hidden = compose.media.length === 0;
+  const sb = $('#sched-btn');
+  if (sb) { sb.hidden = !!compose.edit; sb.classList.toggle('active', !!compose.scheduledAt); sb.setAttribute('aria-pressed', compose.scheduledAt ? 'true' : 'false'); sb.title = compose.scheduledAt ? `Agendada para ${new Date(compose.scheduledAt).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}` : 'Agendar publicação'; }
   $('#sens-btn').setAttribute('aria-pressed', compose.sensitive ? 'true' : 'false');
   $('#sens-btn').classList.toggle('active', compose.sensitive);
   $('#media-btn').disabled = !!compose.poll || compose.media.length >= limits.maxMedia || (compose.edit && !!compose.edit.poll);
@@ -3021,6 +3066,25 @@ function langSheet() {
     label, icon: code === compose.lang ? 'check' : null,
     onclick: () => { compose.lang = code; store.set('lang', code); renderComposeExtras(); saveDraft(); },
   })));
+}
+
+function scheduleSheet() {
+  const pad = (n) => String(n).padStart(2, '0');
+  const local = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  const min = new Date(Date.now() + 6 * 60000);
+  const input = h('input', { type: 'datetime-local', class: 'sheet-text', 'aria-label': 'Data e hora', min: local(min),
+    value: compose.scheduledAt ? local(new Date(compose.scheduledAt)) : local(new Date(Date.now() + 3600000)) });
+  const err = h('p', { class: 'error small' });
+  openSheet('Agendar publicação', [{
+    label: 'Agendar', icon: 'clock',
+    keepOpen: true,
+    onclick: () => {
+      const d = new Date(input.value);
+      if (!input.value || isNaN(d) || d.getTime() < Date.now() + 5 * 60000) { err.textContent = 'Escolha um horário a pelo menos 5 minutos daqui.'; return false; }
+      compose.scheduledAt = d.toISOString(); renderComposeExtras(); return true;
+    },
+  }, compose.scheduledAt ? { label: 'Remover agendamento', icon: 'close', onclick: () => { compose.scheduledAt = ''; renderComposeExtras(); } } : null].filter(Boolean),
+  h('div', { class: 'sheet-form' }, input, err));
 }
 
 function fitText() {
@@ -3240,14 +3304,15 @@ async function submitCompose(e) {
           sensitive: compose.media.length && compose.sensitive ? true : undefined,
           poll: poll ? { options: poll.options, expires_in: poll.expires_in, multiple: poll.multiple } : undefined,
           language: compose.lang || undefined,
+          scheduled_at: compose.scheduledAt || undefined,
         },
       });
       if (!compose.replyTo) { store.del('draft'); store.set('lastVisibility', composeVis); }
     }
     $('#composer').close();
-    toast(compose.edit ? 'Publicação editada' : 'Publicado');
+    toast(compose.edit ? 'Publicação editada' : compose.scheduledAt ? `Agendada para ${new Date(compose.scheduledAt).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}` : 'Publicado');
     if (activeThread()) loadThread(activeThread());
-    else if (!compose.edit && state.tab === 'home' && !state.homeList) loadList('home');
+    else if (!compose.edit && !compose.scheduledAt && state.tab === 'home' && !state.homeList) loadList('home');
   } catch (err) {
     $('#compose-error').textContent = err.message;
   } finally {
@@ -3421,6 +3486,7 @@ function bindUi() {
   $('#media-input').addEventListener('change', (ev) => { const fs = [...ev.target.files]; ev.target.value = ''; addMedia(fs); });
   $('#poll-btn').addEventListener('click', togglePoll);
   $('#lang-btn').addEventListener('click', langSheet);
+  $('#sched-btn').addEventListener('click', scheduleSheet);
   $('#sens-btn').addEventListener('click', () => { compose.sensitive = !compose.sensitive; renderComposeExtras(); });
 }
 
