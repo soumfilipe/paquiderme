@@ -2055,7 +2055,7 @@ function profileView(view, p) {
       h('img', { class: 'profile-avatar', src: safeUrl(a.avatar_static || a.avatar), alt: '' }),
       actions),
     h('h2', { class: 'profile-name' }, nameNode(a)),
-    h('div', { class: 'muted' }, '@' + fullAcct(a)),
+    h('div', { class: 'handle' }, '@' + fullAcct(a)),
     badges.length ? h('div', { class: 'badges' }, ...badges.map(([label, icon]) => h('span', { class: 'badge' }, icon ? svgIcon(icon, 13) : null, label))) : null,
     a.moved ? h('p', { class: 'muted small' }, 'Mudou para ', h('span', { class: 'link-name', role: 'button', tabindex: '0', onclick: () => openProfile(a.moved) }, '@' + a.moved.acct)) : null,
     a.note ? h('div', { class: 'bio' }, sanitizeHtml(a.note, a.emojis)) : null,

@@ -653,3 +653,9 @@ body.has-dock #view { padding-bottom: calc(var(--tabbar-h) + var(--sab) + 96px);
 .notif-avatars .avatar { width: 32px; height: 32px; margin-right: -8px; border: 2px solid var(--bg); box-sizing: content-box; cursor: pointer; }
 .notif-avatars .more-count { margin-left: 16px; font-size: 13px; color: var(--muted); }
 .notif.group .notif-kind { padding-top: 0; margin-bottom: 4px; }
+
+/* Handles na cor de destaque; botão do perfil afastado da capa */
+.status .acct, .account-row .acct, .handle { color: var(--accent); }
+.handle { overflow-wrap: anywhere; }
+.profile-top { align-items: flex-start; }
+.profile-top > :not(.profile-avatar) { margin-top: 56px; }
