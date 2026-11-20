@@ -1,7 +1,7 @@
 // Service worker do Paquiderme: só guarda o "casco" do app para abrir rápido/offline.
 // Nunca toca em chamadas à API (são de outra origem e passam direto).
 // Ao mudar qualquer arquivo do app, aumente a versão abaixo.
-const CACHE = 'paquiderme-v39';
+const CACHE = 'paquiderme-v40';
 const SHELL = [
   './',
   'index.html',
@@ -38,6 +38,18 @@ self.addEventListener('fetch', (e) => {
   const req = e.request;
   const url = new URL(req.url);
   if (req.method !== 'GET' || url.origin !== self.location.origin) return;
+
+  // fontes nunca mudam dentro de uma versão do app: do cache direto, sem ir à rede (a versão do CACHE as renova)
+  if (url.pathname.includes('/fonts/')) {
+    e.respondWith(caches.open(CACHE).then(async (cache) => {
+      const hit = await cache.match(req, { ignoreSearch: true });
+      if (hit) return hit;
+      const res = await fetch(req);
+      if (res.ok) cache.put(req, res.clone());
+      return res;
+    }));
+    return;
+  }
 
   // rede primeiro (sempre a versão mais nova, ignorando o cache HTTP do navegador); sem rede, usa o guardado
   e.respondWith(
