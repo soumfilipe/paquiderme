@@ -8,8 +8,8 @@
   --accent-ink: #1a1230;
   --border: #2f2b40;
   --danger: #ff8fa3;
-  --boost: #7fe0b0;
-  --fav: #ffd27f;
+  --boost: var(--accent);
+  --fav: var(--accent);
   --tabbar-h: 56px;
   --sat: env(safe-area-inset-top, 0px);
   --sab: env(safe-area-inset-bottom, 0px);
@@ -26,8 +26,8 @@
     --accent-ink: #ffffff;
     --border: #e1dcf0;
     --danger: #c0334f;
-    --boost: #1b8a57;
-    --fav: #b87800;
+    --boost: var(--accent);
+    --fav: var(--accent);
   }
 }
 
@@ -412,3 +412,16 @@ img.emoji { height: 1.2em; width: auto; vertical-align: -0.25em; }
 .account-row .name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .account-row .acct { color: var(--muted); font-size: 13px; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .notif .account-row { border-bottom: 0; }
+
+/* Conversas */
+.status { cursor: pointer; }
+.status.focal { cursor: auto; }
+.thread-item { scroll-margin-top: calc(var(--sat) + 48px); }
+.thread-item .status { border-bottom: 1px solid var(--border); }
+.thread-item.ancestor { border-left: 3px solid var(--border); }
+.thread-item.ancestor .status { border-bottom-color: transparent; }
+.thread-item.focal { border-left: 3px solid var(--accent); background: color-mix(in srgb, var(--accent) 7%, transparent); }
+.thread-item.focal .body { font-size: 17px; }
+.thread-item.reply { padding-left: calc(var(--d) * 12px); }
+.thread-item.reply .status { border-left: 2px solid var(--border); }
+.focal-date { margin: 10px 0 0; }

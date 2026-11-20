@@ -397,6 +397,79 @@ function moreButton(kind) {
   return h('button', { type: 'button', class: 'more', onclick: () => loadList(kind, true) }, 'Carregar mais');
 }
 
+/* ----- Conversas (threads) ----- */
+
+function openThread(status, host = null) {
+  state.profiles.push({
+    type: 'thread', status, host, ancestors: [], descendants: [],
+    loading: false, loaded: false, error: null, returnScroll: window.scrollY,
+  });
+  window.scrollTo(0, 0);
+  render();
+  loadThread(topEntry());
+}
+
+async function loadThread(t) {
+  if (!t || t.loading) return;
+  t.loading = true;
+  t.error = null;
+  busy(+1);
+  render();
+  try {
+    const opts = { host: t.host, auth: !t.host };
+    const [ctx, fresh] = await Promise.all([
+      api(`/api/v1/statuses/${t.status.id}/context`, opts),
+      api(`/api/v1/statuses/${t.status.id}`, opts).catch(() => null),
+    ]);
+    if (fresh) t.status = fresh.reblog || fresh;
+    t.ancestors = ctx.ancestors || [];
+    t.descendants = ctx.descendants || [];
+    t.loaded = true;
+  } catch (e) {
+    t.error = e.status === 404 ? 'Esta publicação não está mais disponível.' : e.message;
+  } finally {
+    t.loading = false;
+    busy(-1);
+    if (session && state.profiles.includes(t)) {
+      render();
+      if (t.loaded && !t.scrolled) {
+        t.scrolled = true;
+        const f = document.querySelector('.thread-item.focal');
+        if (f && t.ancestors.length) f.scrollIntoView({ block: 'start' });
+      }
+    }
+  }
+}
+
+function threadView(view, t) {
+  view.append(profileBar('Conversa', closeProfile));
+  const opts = { readonly: !!t.host, host: t.host };
+  const item = (cls, s, depth = 0) => {
+    const el = statusEl(s, opts);
+    const box = h('div', { class: `thread-item ${cls}`, style: `--d:${Math.min(depth, 5)}` }, el);
+    if (cls === 'focal') {
+      el.classList.add('focal');
+      el.insertBefore(h('p', { class: 'muted small focal-date' }, new Date(s.created_at).toLocaleString('pt-BR', { dateStyle: 'long', timeStyle: 'short' })), el.querySelector('.actions'));
+    }
+    return box;
+  };
+  t.ancestors.forEach((s) => view.append(item('ancestor', s)));
+  view.append(item('focal', t.status));
+  const depth = new Map([[t.status.id, 0]]);
+  t.descendants.forEach((s) => {
+    const d = (depth.get(s.in_reply_to_id) ?? 0) + 1;
+    depth.set(s.id, d);
+    view.append(item('reply', s, d));
+  });
+  if (t.loading) view.append(h('p', { class: 'empty' }, 'Carregando conversa…'));
+  else if (t.error) {
+    view.append(h('div', { class: 'empty' }, h('p', { class: 'error' }, t.error),
+      h('button', { type: 'button', onclick: () => loadThread(t) }, 'Tentar de novo')));
+  } else if (t.loaded && !t.descendants.length) {
+    view.append(h('p', { class: 'empty' }, t.ancestors.length ? 'Sem respostas ainda.' : 'Ninguém respondeu ainda.'));
+  }
+}
+
 /* ----- Perfis ----- */
 
 const fmtCount = (n) => new Intl.NumberFormat('pt-BR', { notation: 'compact', maximumFractionDigits: 1 }).format(Number(n) || 0);
@@ -416,8 +489,19 @@ function mkProfile(account) {
   };
 }
 
+// A pilha `state.profiles` guarda perfis e conversas (type: 'thread') abertos por cima da aba.
+function topEntry() {
+  return state.profiles.length ? state.profiles[state.profiles.length - 1] : null;
+}
+
+function activeThread() {
+  const t = topEntry();
+  return t && t.type === 'thread' ? t : null;
+}
+
 function activeProfile() {
-  if (state.profiles.length) return state.profiles[state.profiles.length - 1];
+  const t = topEntry();
+  if (t) return t.type === 'thread' ? null : t;
   return state.tab === 'account' ? state.me : null;
 }
 
@@ -761,8 +845,10 @@ function render() {
   const view = $('#view');
   const y = window.scrollY;
   view.replaceChildren();
+  const thr = activeThread();
   const prof = activeProfile();
-  if (prof) profileView(view, prof);
+  if (thr) threadView(view, thr);
+  else if (prof) profileView(view, prof);
   else if (state.tab === 'home') renderList(view, 'home', (s) => statusEl(s));
   else if (state.tab === 'notifications') renderList(view, 'notifications', notifEl);
   else if (state.tab === 'explore') exploreView(view);
@@ -853,6 +939,7 @@ async function loadTrends() {
 }
 
 function currentKind() {
+  if (activeThread()) return 'thread';
   const p = activeProfile();
   if (p) return (p === state.me && state.settingsOpen) ? null : 'p:' + (p.people || p.seg);
   if (state.tab === 'home' || state.tab === 'notifications') return state.tab;
@@ -863,6 +950,7 @@ function currentKind() {
 function refreshCurrent() {
   const kind = currentKind();
   if (!kind) return;
+  if (kind === 'thread') { loadThread(activeThread()); return; }
   if (kind.startsWith('p:')) loadProfile(activeProfile());
   if (kind === 'trends') loadTrends();
   else loadList(kind);
@@ -1050,7 +1138,8 @@ async function submitCompose(e) {
     if (!compose.replyTo) { store.del('draft'); store.set('lastVisibility', composeVis); }
     $('#composer').close();
     toast('Publicado');
-    if (state.tab === 'home') loadList('home');
+    if (activeThread()) loadThread(activeThread());
+    else if (state.tab === 'home') loadList('home');
   } catch (err) {
     $('#compose-error').textContent = err.message;
   } finally {
@@ -1102,6 +1191,14 @@ function bindUi() {
   document.querySelectorAll('#tabs button').forEach((b) => b.addEventListener('click', () => selectTab(b.dataset.tab)));
   bindPullToRefresh();
   $('#view').addEventListener('click', (e) => {
+    // toque numa publicação (fora de links, botões, mídia e avisos de conteúdo) abre a conversa
+    const card = e.target.closest && e.target.closest('.status');
+    if (card && card._status && !card.classList.contains('focal')
+        && !e.target.closest('a, button, summary, video, audio, .media, .who-link, .link-name, input')
+        && !(window.getSelection && String(window.getSelection()))) {
+      openThread(card._status, card._host);
+      return;
+    }
     const el = e.target.closest && e.target.closest('a.mention, a.hashtag');
     if (!el) return;
     if (el.classList.contains('hashtag')) {
