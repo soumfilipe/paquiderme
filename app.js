@@ -1,5 +1,5 @@
 import {
-  OOB, randomString, pkceChallenge, normalizeHost,
+  OOB, b64url, randomString, pkceChallenge, normalizeHost,
   sanitizeHtml, emojiFragment, safeUrl, timeAgo, h, svgIcon, sparkline, parseNextMaxId,
 } from './lib.js';
 
@@ -287,6 +287,144 @@ async function toggle(btn, sh, kind) {
   }
 }
 
+async function toggleBookmark(btn, sh) {
+  const was = !!sh.bookmarked;
+  btn.disabled = true;
+  try {
+    const r = await api(`/api/v1/statuses/${sh.id}/${was ? 'unbookmark' : 'bookmark'}`, { method: 'POST' });
+    sh.bookmarked = (r.reblog || r).bookmarked;
+    paintAction(btn, 'bookmark', 0, sh.bookmarked);
+    btn.classList.add('pulse');
+    setTimeout(() => btn.classList.remove('pulse'), 600);
+    toast(sh.bookmarked ? 'Salvo' : 'Removido dos salvos');
+  } catch (e) {
+    toast(e.message);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+/* ---------- Menu inferior (folha de ações) ---------- */
+
+function openSheet(title, items, content) {
+  const d = $('#sheet');
+  d.replaceChildren(h('div', { class: 'sheet-box' },
+    title ? h('p', { class: 'sheet-title muted small' }, title) : null,
+    content || null,
+    ...items.map((it) => it.href
+      ? h('a', { class: 'sheet-item', href: safeUrl(it.href), target: '_blank', rel: 'noopener noreferrer', onclick: () => d.close() }, it.icon ? svgIcon(it.icon, 20) : null, it.label)
+      : h('button', { type: 'button', class: `sheet-item${it.danger ? ' danger' : ''}`, onclick: async () => { d.close(); await it.onclick(); } }, it.icon ? svgIcon(it.icon, 20) : null, it.label)),
+    h('button', { type: 'button', class: 'sheet-item cancel', onclick: () => d.close() }, 'Cancelar')));
+  if (!d.open) d.showModal();
+}
+
+// Some das listas as publicações de uma conta que acabou de ser silenciada/bloqueada
+function purgeAccount(id) {
+  const keep = (s) => s.account.id !== id && !(s.reblog && s.reblog.account.id === id);
+  ['home', 'local', 'global', 'tag', 'listTl'].forEach((k) => { state[k].items = state[k].items.filter(keep); });
+  state.trends.statuses = state.trends.statuses.filter(keep);
+  state.notifications.items = state.notifications.items.filter((n) => n.account.id !== id);
+  render();
+}
+
+function applyRel(account, rel) {
+  [state.me, ...state.profiles].forEach((p) => { if (p && p.id === account.id && !p.type) p.rel = rel; });
+}
+
+async function relOf(account) {
+  const r = await api('/api/v1/accounts/relationships', { params: { 'id[]': [account.id] } });
+  return r[0];
+}
+
+async function muteAccount(account, duration) {
+  try {
+    const rel = await api(`/api/v1/accounts/${account.id}/mute`, { method: 'POST', body: { notifications: true, duration } });
+    applyRel(account, rel);
+    purgeAccount(account.id);
+    toast(`@${account.acct} silenciado`);
+  } catch (e) { toast(e.message); }
+}
+
+async function accountAction(account, verb, msg) {
+  try {
+    const rel = await api(`/api/v1/accounts/${account.id}/${verb}`, { method: 'POST' });
+    applyRel(account, rel);
+    if (verb === 'block' || verb === 'mute') purgeAccount(account.id); else render();
+    toast(msg);
+  } catch (e) { toast(e.message); }
+}
+
+function reportSheet(account, status) {
+  const comment = h('textarea', { class: 'sheet-text', rows: '4', maxlength: '1000', placeholder: 'O que há de errado? (opcional)', 'aria-label': 'Motivo da denúncia' });
+  const remote = account.acct.includes('@');
+  const fwd = h('input', { type: 'checkbox', checked: true });
+  openSheet(`Denunciar @${account.acct}`, [{
+    label: 'Enviar denúncia', icon: 'flag', danger: true,
+    onclick: async () => {
+      try {
+        await api('/api/v1/reports', { method: 'POST', body: {
+          account_id: account.id, status_ids: status ? [status.id] : undefined,
+          comment: comment.value.trim() || undefined, forward: remote ? fwd.checked : undefined,
+        } });
+        toast('Denúncia enviada');
+      } catch (e) { toast(e.message); }
+    },
+  }], h('div', { class: 'sheet-form' }, comment,
+    remote ? h('label', { class: 'sheet-check' }, fwd, ` Encaminhar também à instância de @${account.acct.split('@')[1]}`) : null));
+}
+
+function moderationItems(account, rel, status) {
+  const muted = rel && rel.muting;
+  const blocked = rel && rel.blocking;
+  return [
+    muted
+      ? { label: `Deixar de silenciar @${account.acct}`, icon: 'mute', onclick: () => accountAction(account, 'unmute', 'Silenciamento removido') }
+      : { label: `Silenciar @${account.acct}`, icon: 'mute', onclick: () => openSheet(`Silenciar @${account.acct}`, [
+        { label: 'Por 1 dia', onclick: () => muteAccount(account, 86400) },
+        { label: 'Por 7 dias', onclick: () => muteAccount(account, 604800) },
+        { label: 'Para sempre', onclick: () => muteAccount(account, 0) },
+      ]) },
+    blocked
+      ? { label: `Desbloquear @${account.acct}`, icon: 'block', onclick: () => accountAction(account, 'unblock', 'Desbloqueado') }
+      : { label: `Bloquear @${account.acct}`, icon: 'block', danger: true, onclick: () => openSheet(`Bloquear @${account.acct}?`, [
+        { label: 'Bloquear', icon: 'block', danger: true, onclick: () => accountAction(account, 'block', `@${account.acct} bloqueado`) },
+      ]) },
+    { label: status ? 'Denunciar esta publicação' : `Denunciar @${account.acct}`, icon: 'flag', danger: true, onclick: () => reportSheet(account, status) },
+  ];
+}
+
+async function accountMenu(account, rel) {
+  openSheet(`@${account.acct}`, moderationItems(account, rel, null));
+}
+
+async function statusMenu(sh) {
+  const own = sh.account.id === session.account.id;
+  const items = [];
+  const url = sh.url || sh.uri;
+  if (own && (sh.visibility === 'public' || sh.visibility === 'unlisted')) {
+    items.push({ label: sh.pinned ? 'Desafixar do perfil' : 'Fixar no perfil', icon: 'pin', onclick: async () => {
+      try {
+        const r = await api(`/api/v1/statuses/${sh.id}/${sh.pinned ? 'unpin' : 'pin'}`, { method: 'POST' });
+        sh.pinned = r.pinned;
+        toast(sh.pinned ? 'Fixada no perfil' : 'Desafixada');
+        if (state.me) loadProfile(state.me);
+        state.profiles.forEach((p) => { if (!p.type && p.id === session.account.id) loadProfile(p); });
+      } catch (e) { toast(e.message); }
+    } });
+  }
+  items.push({ label: 'Copiar link', icon: 'copy', onclick: async () => {
+    try { await navigator.clipboard.writeText(url); toast('Link copiado'); } catch { toast(url); }
+  } });
+  items.push({ label: 'Abrir original', icon: 'external', href: url });
+  if (!own) {
+    busy(+1);
+    let rel = null;
+    try { rel = await relOf(sh.account); } catch { /* segue sem o estado atual */ } finally { busy(-1); }
+    items.push(...moderationItems(sh.account, rel, sh));
+  }
+  openSheet(null, items);
+}
+
 function mediaEl(sh) {
   const items = (sh.media_attachments || []).filter((m) => safeUrl(m.url));
   if (!items.length) return null;
@@ -356,7 +494,9 @@ function statusEl(s, { readonly = false, host = null } = {}) {
   const favBtn = actionButton('fav', 'fav', sh.favourites_count, sh.favourited, (e) => toggle(e.currentTarget, sh, 'fav'), 'Favoritar');
   const replyBtn = actionButton('reply', 'reply', sh.replies_count, false, () => openComposer({ replyTo: sh }), 'Responder');
   const open = h('a', { class: 'open', href: safeUrl(sh.url || sh.uri), target: '_blank', rel: 'noopener noreferrer', 'aria-label': 'Abrir original' }, svgIcon('external', 18));
-  el.append(h('div', { class: 'actions' }, ...(readonly ? [open] : [replyBtn, boostBtn, favBtn, open])));
+  const markBtn = actionButton('bookmark', 'bookmark', 0, sh.bookmarked, (e) => toggleBookmark(e.currentTarget, sh), 'Salvar');
+  const moreBtn = h('button', { type: 'button', class: 'more-btn', 'aria-label': 'Mais opções', onclick: () => statusMenu(sh) }, svgIcon('more', 20));
+  el.append(h('div', { class: 'actions' }, ...(readonly ? [open] : [replyBtn, boostBtn, favBtn, markBtn, moreBtn])));
   return el;
 }
 
@@ -480,6 +620,114 @@ function threadView(view, t) {
   }
 }
 
+/* ---------- Avisos no aparelho (Web Push) ---------- */
+
+const PUSH_ALERTS = [
+  ['mention', 'Menções e respostas'],
+  ['follow', 'Novos seguidores'],
+  ['reblog', 'Impulsos'],
+  ['favourite', 'Favoritos'],
+  ['status', 'Publicações de contas com o sininho'],
+];
+const pushState = { loading: false, supported: false, standalone: false, sub: null, error: null, loaded: false };
+
+const isStandalone = () => navigator.standalone === true || (window.matchMedia && matchMedia('(display-mode: standalone)').matches);
+const pushSupported = () => 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+
+function b64ToBytes(s) {
+  const bin = atob((s + '='.repeat((4 - (s.length % 4)) % 4)).replace(/-/g, '+').replace(/_/g, '/'));
+  return Uint8Array.from(bin, (c) => c.charCodeAt(0));
+}
+
+async function loadPush() {
+  const ps = pushState;
+  ps.supported = pushSupported();
+  ps.standalone = isStandalone();
+  ps.error = null;
+  if (!ps.supported) { ps.loaded = true; return; }
+  ps.loading = true;
+  try {
+    ps.sub = await api('/api/v1/push/subscription');
+  } catch (e) {
+    ps.sub = null;
+    if (e.status !== 404) ps.error = e.message;
+  } finally {
+    ps.loading = false; ps.loaded = true;
+    if (session) render();
+  }
+}
+
+async function enablePush() {
+  const ps = pushState;
+  ps.error = null;
+  try {
+    const perm = await Notification.requestPermission();
+    if (perm !== 'granted') throw new Error('Permissão negada. Libere as notificações do Paquiderme nos Ajustes do iPhone.');
+    const inst = await api('/api/v2/instance');
+    const key = inst && inst.configuration && inst.configuration.vapid && inst.configuration.vapid.public_key;
+    if (!key) throw new Error('Esta instância não oferece notificações push.');
+    const reg = await navigator.serviceWorker.ready;
+    let sub = await reg.pushManager.getSubscription();
+    if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64ToBytes(key) });
+    ps.sub = await api('/api/v1/push/subscription', { method: 'POST', body: {
+      subscription: { endpoint: sub.endpoint, keys: { p256dh: b64url(sub.getKey('p256dh')), auth: b64url(sub.getKey('auth')) } },
+      data: { alerts: { mention: true, follow: true, follow_request: true, reblog: false, favourite: false, status: false, poll: false, update: false }, policy: 'all' },
+    } });
+    toast('Avisos ativados');
+  } catch (e) { ps.error = e.message; }
+  if (session) render();
+}
+
+async function disablePush() {
+  const ps = pushState;
+  try {
+    await api('/api/v1/push/subscription', { method: 'DELETE' });
+    const reg = await navigator.serviceWorker.ready;
+    const sub = await reg.pushManager.getSubscription();
+    if (sub) await sub.unsubscribe();
+    ps.sub = null;
+    toast('Avisos desativados');
+  } catch (e) { ps.error = e.message; }
+  if (session) render();
+}
+
+async function setPushAlert(key, on) {
+  const ps = pushState;
+  const alerts = { ...ps.sub.alerts, [key]: on };
+  if (key === 'follow') alerts.follow_request = on;
+  try {
+    ps.sub = await api('/api/v1/push/subscription', { method: 'PUT', body: { data: { alerts } } });
+  } catch (e) { toast(e.message); }
+  render();
+}
+
+function pushSection() {
+  const ps = pushState;
+  const box = h('div', { class: 'account-card' }, h('strong', {}, 'Avisos no aparelho'));
+  if (!ps.loaded || ps.loading) { box.append(h('p', { class: 'muted small' }, 'Verificando…')); return box; }
+  if (!ps.supported) {
+    box.append(h('p', { class: 'muted small' }, 'Este navegador não oferece avisos push. No iPhone, adicione o Paquiderme à Tela de Início (iOS 16.4 ou mais novo) e abra por lá.'));
+    return box;
+  }
+  if (/iPhone|iPad/.test(navigator.userAgent) && !ps.standalone) {
+    box.append(h('p', { class: 'muted small' }, 'No iPhone os avisos só funcionam no app instalado: toque em Compartilhar › Adicionar à Tela de Início e abra por lá.'));
+    return box;
+  }
+  if (ps.sub) {
+    PUSH_ALERTS.forEach(([k, label]) => {
+      const on = !!(ps.sub.alerts && ps.sub.alerts[k]);
+      box.append(h('button', { type: 'button', class: `pick-row${on ? ' on' : ''}`, role: 'switch', 'aria-checked': on ? 'true' : 'false', onclick: () => setPushAlert(k, !on) },
+        h('span', { class: 'pick-box' }, on ? svgIcon('check', 16) : null), label));
+    });
+    box.append(h('button', { type: 'button', onclick: disablePush }, 'Desativar avisos'));
+  } else {
+    box.append(h('p', { class: 'muted small' }, 'Receba menções e novos seguidores mesmo com o app fechado. A instância envia direto ao seu aparelho; o Paquiderme não tem servidor.'));
+    box.append(h('button', { type: 'button', class: 'primary', onclick: enablePush }, 'Ativar avisos'));
+  }
+  if (ps.error) box.append(h('p', { class: 'error' }, ps.error));
+  return box;
+}
+
 /* ----- Listas ----- */
 
 async function loadLists(quiet = false) {
@@ -536,6 +784,7 @@ function entryView(view, e) {
   else if (e.type === 'lists') listsManageView(view, e);
   else if (e.type === 'members') membersView(view, e);
   else if (e.type === 'pick') listPickView(view, e);
+  else if (e.type === 'accounts') accountsEntryView(view, e);
 }
 
 async function createList(title) {
@@ -601,6 +850,49 @@ function listRow(l, e) {
         render();
       } catch (err) { toast(err.message); }
     } }, confirming ? 'Confirmar' : 'Excluir'));
+}
+
+function openAccountsEntry(title, path, undoVerb, undoLabel) {
+  const e = { type: 'accounts', title, path, undoVerb, undoLabel, items: [], next: null, more: false, loaded: false, loading: false, error: null };
+  e.reload = () => loadAccountsEntry(e, false);
+  pushEntry(e);
+}
+
+async function loadAccountsEntry(e, append) {
+  if (e.loading) return;
+  e.loading = true; e.error = null;
+  if (!append) busy(+1);
+  render();
+  try {
+    let headers = null;
+    const params = { limit: 40 };
+    if (append && e.next) params.max_id = e.next;
+    const data = await api(e.path, { params, onHeaders: (hd) => { headers = hd; } });
+    e.items = append ? e.items.concat(data) : data;
+    e.next = parseNextMaxId(headers && headers.get('Link'));
+    e.more = !!e.next;
+    e.loaded = true;
+  } catch (err) { e.error = err.message; } finally {
+    e.loading = false;
+    if (!append) busy(-1);
+    if (session && state.profiles.includes(e)) render();
+  }
+}
+
+function accountsEntryView(view, e) {
+  view.append(profileBar(e.title, closeProfile));
+  e.items.forEach((a) => view.append(personRow(a, e.undoLabel, async (btn) => {
+    btn.disabled = true;
+    try {
+      await api(`/api/v1/accounts/${a.id}/${e.undoVerb}`, { method: 'POST' });
+      e.items = e.items.filter((x) => x.id !== a.id);
+      render();
+    } catch (err) { toast(err.message); btn.disabled = false; }
+  })));
+  if (e.error) view.append(h('div', { class: 'empty' }, h('p', { class: 'error' }, e.error), h('button', { type: 'button', onclick: () => loadAccountsEntry(e, e.items.length > 0) }, 'Tentar de novo')));
+  else if (e.loading) view.append(h('p', { class: 'empty' }, 'Carregando…'));
+  else if (!e.items.length) view.append(h('p', { class: 'empty' }, 'Ninguém por aqui.'));
+  else if (e.more) view.append(h('button', { type: 'button', class: 'more', onclick: () => loadAccountsEntry(e, true) }, 'Carregar mais'));
 }
 
 function openMembers(list) {
@@ -725,12 +1017,14 @@ const PROFILE_SEGS = [
   ['replies', 'Com respostas'],
   ['media', 'Mídia'],
 ];
+const OWN_SEGS = [['bookmarks', 'Salvos'], ['favourites', 'Favoritos']];
+const profileSegs = (p) => (p.id === session.account.id ? [...PROFILE_SEGS, ...OWN_SEGS] : PROFILE_SEGS);
 
 function mkProfile(account) {
   return {
     id: account.id, account, rel: null, loaded: false, error: null,
     seg: 'posts', people: null,
-    posts: mkList(), replies: mkList(), media: mkList(), followers: mkList(), following: mkList(),
+    posts: mkList(), replies: mkList(), media: mkList(), bookmarks: mkList(), favourites: mkList(), followers: mkList(), following: mkList(), pinned: [],
     returnScroll: 0,
   };
 }
@@ -809,10 +1103,12 @@ async function loadProfile(p) {
   p.error = null;
   try {
     const self = p.id === session.account.id;
-    const [acct, rels] = await Promise.all([
+    const [acct, rels, pinned] = await Promise.all([
       api(`/api/v1/accounts/${p.id}`),
       self ? Promise.resolve(null) : api('/api/v1/accounts/relationships', { params: { 'id[]': [p.id] } }),
+      api(`/api/v1/accounts/${p.id}/statuses`, { params: { pinned: 'true' } }).catch(() => []),
     ]);
+    p.pinned = pinned;
     p.account = acct;
     p.rel = rels ? rels[0] : null;
     p.loaded = true;
@@ -827,6 +1123,7 @@ async function loadProfile(p) {
 function ensureProfileLoaded(p) {
   if (!p || activeProfile() !== p) return;
   const l = p[p.people || p.seg];
+  if (!l) return;
   if (!l.items.length && !l.loading) loadList('p:' + (p.people || p.seg));
 }
 
@@ -890,6 +1187,11 @@ function settingsView(view) {
     h('button', { type: 'button', class: 'with-icon', onclick: updateApp }, svgIcon('refresh', 18), 'Atualizar o app (limpar cache)'),
     h('button', { type: 'button', class: 'with-icon', onclick: () => logout() }, svgIcon('logout', 18), 'Sair'),
     h('p', { class: 'muted small' }, `${APP_NAME} · cliente estático, sem servidor próprio. O token fica só neste aparelho.`)));
+  view.append(pushSection());
+  view.append(h('div', { class: 'account-card' },
+    h('strong', {}, 'Moderação pessoal'),
+    h('button', { type: 'button', class: 'with-icon', onclick: () => openAccountsEntry('Contas silenciadas', '/api/v1/mutes', 'unmute', 'Reativar') }, svgIcon('mute', 18), 'Contas silenciadas'),
+    h('button', { type: 'button', class: 'with-icon', onclick: () => openAccountsEntry('Contas bloqueadas', '/api/v1/blocks', 'unblock', 'Desbloquear') }, svgIcon('block', 18), 'Contas bloqueadas')));
 }
 
 function profileView(view, p) {
@@ -905,7 +1207,7 @@ function profileView(view, p) {
   const a = p.account;
   const self = a.id === session.account.id;
   const gear = isRoot
-    ? h('button', { type: 'button', class: 'icon-btn push-right', 'aria-label': 'Configurações do app', onclick: () => { state.settingsOpen = true; window.scrollTo(0, 0); render(); } }, svgIcon('settings', 22))
+    ? h('button', { type: 'button', class: 'icon-btn push-right', 'aria-label': 'Configurações do app', onclick: () => { state.settingsOpen = true; window.scrollTo(0, 0); render(); loadPush(); } }, svgIcon('settings', 22))
     : null;
   view.append(profileBar(nameNode(a), isRoot ? null : closeProfile, gear));
 
@@ -916,7 +1218,8 @@ function profileView(view, p) {
     ? h('a', { class: 'btn-link', href: `https://${session.host}/settings/profile`, target: '_blank', rel: 'noopener noreferrer' }, 'Editar')
     : h('div', { class: 'profile-actions' },
       p.rel && p.rel.following ? h('button', { type: 'button', onclick: () => openListPicker(a) }, 'Listas') : null,
-      followBtn(p));
+      followBtn(p),
+      h('button', { type: 'button', class: 'icon-btn', 'aria-label': 'Mais opções da conta', onclick: () => accountMenu(a, p.rel) }, svgIcon('more', 22)));
 
   const badges = [];
   if (a.bot) badges.push('Robô');
@@ -949,12 +1252,17 @@ function profileView(view, p) {
       h('a', { href: safeUrl(a.url), target: '_blank', rel: 'noopener noreferrer' }, 'abrir no navegador')),
     p.error ? h('p', { class: 'error' }, p.error) : null));
 
-  view.append(h('div', { class: 'seg-bar under', role: 'tablist' }, ...PROFILE_SEGS.map(([id, label]) =>
+  view.append(h('div', { class: 'seg-bar under', role: 'tablist' }, ...profileSegs(p).map(([id, label]) =>
     h('button', { type: 'button', role: 'tab', class: `chip${p.seg === id ? ' active' : ''}`, 'aria-selected': p.seg === id ? 'true' : 'false', onclick: () => setProfileSeg(p, id) }, label))));
   if (a.locked && !self && !(p.rel && p.rel.following)) {
     view.append(h('p', { class: 'note muted small' }, 'Perfil fechado: siga a conta para ver as publicações.'));
   }
-  renderList(view, 'p:' + p.seg, (s) => statusEl(s));
+  const pinnedIds = new Set(p.pinned.map((s) => s.id));
+  if (p.seg === 'posts') {
+    p.pinned.forEach((s) => view.append(h('div', { class: 'pinned' },
+      h('div', { class: 'pinned-note muted small' }, svgIcon('pin', 14), ' Fixada'), statusEl(s))));
+  }
+  renderList(view, 'p:' + p.seg, (s) => (p.seg === 'posts' && pinnedIds.has(s.id) ? null : statusEl(s)));
 }
 
 
@@ -977,7 +1285,7 @@ function getList(kind) {
 }
 
 function renderList(view, kind, make) {
-  getList(kind).items.forEach((i) => view.append(make(i)));
+  getList(kind).items.forEach((i) => { const n = make(i); if (n) view.append(n); });
   view.append(moreButton(kind));
 }
 
@@ -1111,6 +1419,8 @@ function listSpec(kind) {
       case 'posts': return { path: `/api/v1/accounts/${id}/statuses`, extra: { exclude_replies: 'true' } };
       case 'replies': return { path: `/api/v1/accounts/${id}/statuses` };
       case 'media': return { path: `/api/v1/accounts/${id}/statuses`, extra: { only_media: 'true' } };
+      case 'bookmarks': return { path: '/api/v1/bookmarks', link: true };
+      case 'favourites': return { path: '/api/v1/favourites', link: true };
       case 'followers': return { path: `/api/v1/accounts/${id}/followers`, extra: { limit: 40 }, link: true };
       case 'following': return { path: `/api/v1/accounts/${id}/following`, extra: { limit: 40 }, link: true };
       default: throw new Error('lista de perfil desconhecida: ' + kind);
@@ -1465,7 +1775,10 @@ async function updateApp() {
 
 async function startApp() {
   showApp();
-  selectTab('home');
+  // aberto pelo toque numa notificação push
+  const go = new URL(location.href).searchParams.get('go');
+  if (go) history.replaceState(null, '', location.pathname);
+  selectTab(go === 'notifications' ? 'notifications' : 'home');
   try {
     const res = await fetch(`https://${session.host}/api/v1/instance`);
     const max = (await res.json())?.configuration?.statuses?.max_characters;
@@ -1495,6 +1808,13 @@ function bindUi() {
 
   document.querySelectorAll('#tabs button').forEach((b) => b.addEventListener('click', () => selectTab(b.dataset.tab)));
   bindPullToRefresh();
+  const sheet = $('#sheet');
+  sheet.addEventListener('click', (e) => { if (e.target === sheet) sheet.close(); });
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.addEventListener('message', (e) => {
+      if (e.data && e.data.type === 'open-notifications' && session) { selectTab('notifications'); loadList('notifications'); }
+    });
+  }
   $('#view').addEventListener('click', (e) => {
     // toque numa publicação (fora de links, botões, mídia e avisos de conteúdo) abre a conversa
     const card = e.target.closest && e.target.closest('.status');

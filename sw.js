@@ -1,7 +1,7 @@
 // Service worker do Paquiderme: só guarda o "casco" do app para abrir rápido/offline.
 // Nunca toca em chamadas à API (são de outra origem e passam direto).
 // Ao mudar qualquer arquivo do app, aumente a versão abaixo.
-const CACHE = 'paquiderme-v13';
+const CACHE = 'paquiderme-v14';
 const SHELL = [
   './',
   'index.html',
@@ -46,4 +46,27 @@ self.addEventListener('fetch', (e) => {
       return cached || network;
     }),
   );
+});
+
+// Avisos push: a instância envia direto ao aparelho; o navegador decifra e entrega o JSON aqui.
+self.addEventListener('push', (e) => {
+  let d = {};
+  try { d = e.data.json(); } catch { d = { title: 'Paquiderme', body: e.data ? e.data.text() : '' }; }
+  e.waitUntil(self.registration.showNotification(d.title || 'Paquiderme', {
+    body: d.body || '',
+    icon: d.icon || 'icons/icon-192.png',
+    badge: 'icons/icon-192.png',
+    tag: d.notification_id ? 'n' + d.notification_id : undefined,
+  }));
+});
+
+self.addEventListener('notificationclick', (e) => {
+  e.notification.close();
+  e.waitUntil((async () => {
+    const all = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    for (const c of all) {
+      if ('focus' in c) { await c.focus(); c.postMessage({ type: 'open-notifications' }); return; }
+    }
+    await self.clients.openWindow('./?go=notifications');
+  })());
 });
