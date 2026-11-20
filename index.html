@@ -50,6 +50,14 @@
 
     <button id="fab" aria-label="Nova publicação"><span data-icon="compose" data-size="26"></span></button>
 
+    <div id="search-dock" hidden>
+      <form id="search-form" role="search">
+        <span data-icon="search" data-size="20" class="dock-icon"></span>
+        <input id="search-input" type="search" placeholder="Buscar contas, tags, links…" autocapitalize="none" autocorrect="off" spellcheck="false" enterkeyhint="search" aria-label="Buscar">
+        <button type="button" id="search-clear" class="icon-btn" aria-label="Limpar busca" hidden><span data-icon="close" data-size="18"></span></button>
+      </form>
+    </div>
+
     <nav id="tabs">
       <button data-tab="home" class="active"><span data-icon="home"></span><span>Início</span></button>
       <button data-tab="explore"><span data-icon="explore"></span><span>Explorar</span></button>

@@ -637,3 +637,19 @@ dialog#viewer::backdrop { background: #000; }
 .share-url { display: block; word-break: break-all; padding: 8px 10px; border-radius: 8px; background: var(--surface-2); font-size: 13px; }
 .share-steps { margin: 0; padding-left: 20px; }
 #filter-error, #edit-error { padding: 0 16px; margin: 0; }
+
+/* Busca fixa no Explorar */
+#search-dock { position: fixed; left: 12px; right: 84px; bottom: calc(var(--tabbar-h) + var(--sab) + 16px); z-index: 9; }
+#search-dock.kb { right: 12px; }
+#search-form { display: flex; align-items: center; gap: 8px; height: 56px; padding: 0 8px 0 16px; border-radius: 28px; background: color-mix(in srgb, var(--bg) 88%, var(--accent) 6%); border: 1px solid var(--border); box-shadow: 0 6px 20px rgb(0 0 0 / .18); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); }
+#search-form .dock-icon { color: var(--muted); display: grid; }
+#search-form input { flex: 1; min-width: 0; border: 0; background: transparent; box-shadow: none; padding: 0; font-size: 16px; height: 100%; }
+#search-form input:focus { outline: none; }
+body.has-dock #view { padding-bottom: calc(var(--tabbar-h) + var(--sab) + 96px); }
+
+/* Notificações agrupadas */
+.notif.group { padding-top: 12px; }
+.notif-avatars { display: flex; align-items: center; padding: 0 16px 6px; }
+.notif-avatars .avatar { width: 32px; height: 32px; margin-right: -8px; border: 2px solid var(--bg); box-sizing: content-box; cursor: pointer; }
+.notif-avatars .more-count { margin-left: 16px; font-size: 13px; color: var(--muted); }
+.notif.group .notif-kind { padding-top: 0; margin-bottom: 4px; }

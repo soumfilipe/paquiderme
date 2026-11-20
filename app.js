@@ -39,7 +39,7 @@ function persistSession() {
 const seenKey = () => `seenNotif.${session.host}.${session.account.id}`;
 const scrollKey = (kind) => `scroll.${session.host}.${session.account.id}.${kind}`;
 
-const mkSearch = () => ({ q: '', type: '', res: null, loading: false, error: null, more: false });
+const mkSearch = () => ({ active: false, q: '', type: '', res: null, loading: false, error: null, more: false });
 const mkList = () => ({ items: [], more: true, loading: false, error: null });
 const mkState = () => ({
   tab: 'home',
@@ -58,7 +58,7 @@ const mkState = () => ({
   me: null,            // perfil da aba Conta
   settingsOpen: false,
   explore: {
-    seg: store.get('seg', 'local'),
+    seg: store.get('seg') === 'search' ? 'local' : store.get('seg', 'local'),
     tag: null,
     otherHost: store.get('otherHost', ''),
   },
@@ -589,6 +589,71 @@ const NOTIF_KINDS = {
   severed_relationships: 'relações cortadas',
   moderation_warning: 'aviso de moderação',
 };
+
+const uniqAccounts = (ns) => { const seen = new Set(); return ns.map((n) => n.account).filter((x) => !seen.has(x.id) && seen.add(x.id)); };
+
+// Junta favoritos/impulsos da mesma publicação (e seguidores seguidos na lista) numa só notificação
+function groupNotifs(items) {
+  const out = []; const byStatus = new Map();
+  items.forEach((n) => {
+    if ((n.type === 'reblog' || n.type === 'favourite') && n.status) {
+      let g = byStatus.get(n.status.id);
+      if (!g) { g = { group: true, status: n.status, by: {}, newest: n.created_at, ids: [] }; byStatus.set(n.status.id, g); out.push(g); }
+      (g.by[n.type] = g.by[n.type] || []).push(n);
+      g.ids.push(n.id);
+    } else if (n.type === 'follow' && out.length && out[out.length - 1].follows) {
+      out[out.length - 1].follows.push(n);
+    } else if (n.type === 'follow') {
+      out.push({ follows: [n] });
+    } else out.push(n);
+  });
+  return out;
+}
+
+function namesNode(accs) {
+  const shown = accs.slice(0, 2);
+  const rest = accs.length - shown.length;
+  const link = (a) => h('strong', { class: 'link-name', role: 'button', tabindex: '0', onclick: () => openProfile(a) }, nameNode(a));
+  const nodes = [link(shown[0])];
+  if (shown[1]) nodes.push(rest > 0 ? ', ' : ' e ', link(shown[1]));
+  if (rest > 0) nodes.push(` e mais ${rest}`);
+  return nodes;
+}
+
+const GROUP_VERBS = {
+  reblog: ['impulsionou', 'impulsionaram', 'sua publicação'],
+  favourite: ['favoritou', 'favoritaram', 'sua publicação'],
+  follow: ['seguiu', 'seguiram', 'você'],
+};
+
+function avatarStack(accs) {
+  const max = 6;
+  return h('div', { class: 'notif-avatars' },
+    ...accs.slice(0, max).map((a) => h('img', { class: 'avatar', src: safeUrl(a.avatar_static || a.avatar), alt: a.display_name || a.acct, loading: 'lazy', onclick: () => openProfile(a) })),
+    accs.length > max ? h('span', { class: 'more-count' }, `+${accs.length - max}`) : null);
+}
+
+function notifLine(type, ns, when) {
+  const accs = uniqAccounts(ns);
+  const [one, many, obj] = GROUP_VERBS[type];
+  return h('div', { class: 'notif-kind' }, ...namesNode(accs), ` ${accs.length > 1 ? many : one} ${obj}`, when ? ` · ${timeAgo(when)}` : '');
+}
+
+function notifGroupEl(g) {
+  if (g.follows) {
+    const accs = uniqAccounts(g.follows);
+    if (accs.length === 1) return notifEl(g.follows[0]);
+    return h('div', { class: 'notif group' }, avatarStack(accs), notifLine('follow', g.follows, g.follows[0].created_at));
+  }
+  const all = Object.values(g.by).flat();
+  const wrap = h('div', { class: 'notif group' }, avatarStack(uniqAccounts(all)));
+  let first = true;
+  ['reblog', 'favourite'].forEach((t) => { if (g.by[t]) { wrap.append(notifLine(t, g.by[t], first ? g.newest : null)); first = false; } });
+  wrap.append(statusEl(g.status));
+  return wrap;
+}
+
+function notifItem(i) { return i.group || i.follows ? notifGroupEl(i) : notifEl(i); }
 
 function notifEl(n) {
   const wrap = h('div', { class: 'notif' });
@@ -2025,7 +2090,6 @@ const SEGMENTS = [
   ['global', 'Global'],
   ['trends', 'Em alta'],
   ['other', 'Outras'],
-  ['search', 'Buscar'],
 ];
 
 function getList(kind) {
@@ -2037,14 +2101,14 @@ function getList(kind) {
   return state[kind];
 }
 
-function renderList(view, kind, make) {
+function renderList(view, kind, make, group) {
   const st = getList(kind);
   if (st.cached) {
     const when = st.cachedAt ? new Date(st.cachedAt).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : '';
     view.append(h('p', { class: 'cache-note', role: 'status' },
       st.error ? `Sem conexão. Mostrando o que foi guardado em ${when}.` : `Mostrando o que foi guardado em ${when}. Atualizando…`));
   }
-  getList(kind).items.forEach((i) => { const n = make(i); if (n) view.append(n); });
+  (group ? group(st.items) : st.items).forEach((i) => { const n = make(i); if (n) view.append(n); });
   view.append(moreButton(kind));
 }
 
@@ -2130,22 +2194,53 @@ function startSearch(q) {
   const s = state.search;
   s.q = q.trim();
   s.res = null;
-  if (s.q) runSearch(); else render();
+  s.active = !!s.q;
+  window.scrollTo(0, 0);
+  if (s.q) runSearch(); else { render(); ensureExploreLoaded(); }
+  updateDock();
+}
+
+function closeSearch() {
+  const s = state.search;
+  s.q = ''; s.res = null; s.active = false; s.error = null;
+  $('#search-input').value = '';
+  window.scrollTo(0, 0);
+  render(); ensureExploreLoaded(); updateDock();
+}
+
+// Barra de busca fixa na base do Explorar (ao alcance do polegar)
+function updateDock() {
+  const ex = state.explore;
+  const show = !!session && state.tab === 'explore' && !ex.tag && state.profiles.length === 0 && !$('#app').hidden;
+  const dock = $('#search-dock');
+  dock.hidden = !show;
+  document.body.classList.toggle('has-dock', show);
+  $('#search-clear').hidden = !$('#search-input').value && !state.search.active;
+}
+
+function fitDock() {
+  const dock = $('#search-dock');
+  const vv = window.visualViewport;
+  if (!vv) return;
+  const kb = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+  dock.style.bottom = kb > 80 ? `${kb + 8}px` : '';
+  dock.classList.toggle('kb', kb > 80);
+}
+
+function bindDock() {
+  const input = $('#search-input');
+  $('#search-form').addEventListener('submit', (e) => { e.preventDefault(); input.blur(); startSearch(input.value); });
+  input.addEventListener('input', updateDock);
+  $('#search-clear').addEventListener('click', () => { if (state.search.active) closeSearch(); else { input.value = ''; updateDock(); input.focus(); } });
+  if (window.visualViewport) { window.visualViewport.addEventListener('resize', fitDock); window.visualViewport.addEventListener('scroll', fitDock); }
 }
 
 function searchView(view) {
   const s = state.search;
-  const input = h('input', {
-    type: 'search', placeholder: 'Contas, hashtags, publicações ou link', value: s.q, autocapitalize: 'none', autocorrect: 'off',
-    spellcheck: 'false', enterkeyhint: 'search', 'aria-label': 'Buscar',
-  });
-  view.append(h('form', { class: 'search-form', role: 'search', onsubmit: (e) => { e.preventDefault(); input.blur(); startSearch(input.value); } },
-    input, h('button', { type: 'submit', class: 'primary' }, 'Buscar')));
   view.append(h('div', { class: 'hosts', role: 'group', 'aria-label': 'Tipo de resultado' }, ...SEARCH_TYPES.map(([id, label]) =>
     h('button', { type: 'button', class: `chip${s.type === id ? ' active' : ''}`, 'aria-pressed': s.type === id ? 'true' : 'false',
       onclick: () => { s.type = id; s.res = null; if (s.q) runSearch(); else render(); } }, label))));
   if (s.error) { view.append(h('div', { class: 'empty' }, h('p', { class: 'error' }, s.error), h('button', { type: 'button', onclick: () => runSearch() }, 'Tentar de novo'))); return; }
-  if (!s.q) { view.append(h('p', { class: 'empty' }, 'Busque por nomes, @usuario@instância, #hashtags, texto ou o link de uma publicação.')); return; }
   if (s.loading && !s.res) { view.append(h('p', { class: 'empty' }, 'Buscando…')); return; }
   if (!s.res) return;
   const { accounts, hashtags, statuses } = s.res;
@@ -2174,10 +2269,10 @@ function exploreView(view) {
     renderList(view, 'tag', (s) => statusEl(s));
     return;
   }
+  if (state.search.active) { searchView(view); return; }
   view.append(h('div', { class: 'seg-bar', role: 'tablist' }, ...SEGMENTS.map(([id, label]) =>
     h('button', { type: 'button', role: 'tab', class: `chip${ex.seg === id ? ' active' : ''}`, 'aria-selected': ex.seg === id ? 'true' : 'false', onclick: () => setSeg(id) }, label))));
-  if (ex.seg === 'search') searchView(view);
-  else if (ex.seg === 'trends') trendsView(view);
+  if (ex.seg === 'trends') trendsView(view);
   else if (ex.seg === 'other') otherView(view);
   else renderList(view, ex.seg, (s) => statusEl(s));
 }
@@ -2217,8 +2312,8 @@ function goOther(raw) {
 function ensureExploreLoaded() {
   const ex = state.explore;
   const kind = ex.tag ? 'tag' : ex.seg;
-  if (kind === 'search') {
-    /* nada a carregar até o usuário buscar */
+  if (state.search.active && !ex.tag) {
+    /* resultados da busca já carregados */
   } else if (kind === 'trends') {
     if (!state.trends.loaded && !state.trends.loading) loadTrends();
   } else if (kind === 'other') {
@@ -2242,9 +2337,10 @@ function render() {
   if (top && top.type) entryView(view, top);
   else if (prof) profileView(view, prof);
   else if (state.tab === 'home') homeView(view);
-  else if (state.tab === 'notifications') renderList(view, 'notifications', notifEl);
+  else if (state.tab === 'notifications') renderList(view, 'notifications', notifItem, groupNotifs);
   else if (state.tab === 'explore') exploreView(view);
   window.scrollTo(0, y);
+  updateDock();
 }
 
 function listSpec(kind) {
@@ -2342,7 +2438,7 @@ function currentKind() {
   if (p) return (p === state.me && state.settingsOpen) ? null : 'p:' + (p.people || p.seg);
   if (state.tab === 'home') return state.homeList ? 'list' : 'home';
   if (state.tab === 'notifications') return state.tab;
-  if (state.tab === 'explore') return state.explore.tag ? 'tag' : state.explore.seg;
+  if (state.tab === 'explore') return state.explore.tag ? 'tag' : state.search.active ? 'search' : state.explore.seg;
   return null;
 }
 
@@ -2924,6 +3020,7 @@ function bindUi() {
   });
   $('#fab').addEventListener('click', () => openComposer());
   bindComposerSwipe();
+  bindDock();
   if (window.visualViewport) {
     window.visualViewport.addEventListener('resize', fitComposer);
     window.visualViewport.addEventListener('scroll', fitComposer);
