@@ -3161,8 +3161,9 @@ function openComposer({ replyTo = null, edit = null, share = '', quote = null } 
     let d = store.get(draftKey(), '');
     if (typeof d === 'string') d = { text: d };
     $('#text').value = (d && d.text) || '';
-    if (d && d.cw) { setCw(true); $('#cw').value = d.cw; }
-    if (d && d.poll) compose.poll = d.poll;
+    // um compartilhamento é uma publicação nova: não herda aviso de conteúdo nem enquete do rascunho antigo
+    if (d && d.cw && !share) { setCw(true); $('#cw').value = d.cw; }
+    if (d && d.poll && !share && (d.poll.options || []).some((o) => (o || '').trim())) compose.poll = d.poll;
     if (d && d.lang != null) compose.lang = d.lang;
     setVisibility(prefs.defaultVis || store.get('lastVisibility', 'public'));
     note.hidden = true;
