@@ -1589,7 +1589,7 @@ function pushSection() {
     box.append(h('p', { class: 'muted small' }, 'Receba menções e novos seguidores mesmo com o app fechado. A instância envia direto ao seu aparelho; o Paquiderme não tem servidor.'));
     box.append(h('button', { type: 'button', class: 'primary', onclick: enablePush }, 'Ativar avisos'));
   }
-  if (ps.error) box.append(h('p', { class: 'error' }, ps.error));
+  if (ps.error) box.append(h('p', { class: 'error ro-faixa ro-faixa--erro', role: 'alert' }, ps.error));
   return box;
 }
 
@@ -2092,7 +2092,7 @@ function filterEditView(view, e) {
     chips([['warn', 'Recolher com aviso'], ['hide', 'Ocultar']], (v) => f.action === v, (v) => { f.action = v; }),
     h('strong', {}, 'Duração'),
     chips(expItems, expOn, (v) => { f.exp = v === 'keep' ? undefined : v; })));
-  view.append(h('p', { id: 'filter-error', class: 'error', role: 'alert' }, e.error || ''));
+  view.append(h('p', { id: 'filter-error', class: 'error ro-faixa ro-faixa--erro', role: 'alert' }, e.error || ''));
   view.append(h('div', { class: 'save-bar' }, h('button', { type: 'button', class: 'primary edit-save', onclick: () => saveFilter(e) }, 'Salvar')));
   e.built = true;
 }
@@ -2281,7 +2281,7 @@ function editProfileView(view, e) {
   view.append(sw('Perfil fechado (aprovar quem pode me seguir)', 'locked'));
   view.append(sw('Conta automatizada (robô)', 'bot'));
   view.append(sw('Aparecer no diretório e nas sugestões', 'discoverable'));
-  view.append(h('p', { id: 'edit-error', class: 'error', role: 'alert' }, e.error || ''));
+  view.append(h('p', { id: 'edit-error', class: 'error ro-faixa ro-faixa--erro', role: 'alert' }, e.error || ''));
   view.append(h('div', { class: 'save-bar' }, h('button', { type: 'button', class: 'primary edit-save', onclick: () => saveEditProfile(e) }, 'Salvar')));
   e.built = true;
 }
@@ -3331,7 +3331,7 @@ function scheduleSheet() {
   const min = new Date(Date.now() + 6 * 60000);
   const input = h('input', { type: 'datetime-local', class: 'sheet-text', 'aria-label': 'Data e hora', min: local(min),
     value: compose.scheduledAt ? local(new Date(compose.scheduledAt)) : local(new Date(Date.now() + 3600000)) });
-  const err = h('p', { class: 'error small' });
+  const err = h('p', { class: 'error ro-faixa ro-faixa--erro' });
   openSheet('Agendar publicação', [{
     label: 'Agendar', icon: 'clock',
     keepOpen: true,

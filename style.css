@@ -85,7 +85,7 @@ input, select, textarea {
 .small { font-size: 13px; }
 /* botão em confirmação (confirmar.js do Rochedo) */
 button[data-confirmando] { background: var(--danger); border-color: var(--danger); color: var(--bg); }
-.error { color: var(--danger); min-height: 1.4em; }
+.error:empty { display: none; } /* a faixa só aparece quando há mensagem */
 
 /* Login */
 #login {
