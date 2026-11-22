@@ -2,6 +2,7 @@ import {
   OOB, b64url, randomString, pkceChallenge, normalizeHost,
   sanitizeHtml, emojiFragment, safeUrl, timeAgo, h, svgIcon, sparkline, parseNextMaxId,
 } from './lib.js';
+import { aviso } from './rochedo/aviso.js';
 
 // anti-clickjacking: o GitHub Pages não permite cabeçalhos (frame-ancestors), então o app se recusa a rodar dentro de um iframe
 if (window.top !== window.self) { document.documentElement.hidden = true; try { window.top.location = window.self.location; } catch { /* sem permissão: fica oculto */ } }
@@ -76,15 +77,7 @@ let state = mkState();
 
 /* ---------- Avisos ---------- */
 
-let toastTimer;
-function toast(msg) {
-  let t = $('#toast');
-  if (!t) { t = h('div', { id: 'toast', role: 'status' }); document.body.append(t); }
-  t.textContent = msg;
-  t.hidden = false;
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => { t.hidden = true; }, 3500);
-}
+function toast(msg, opts) { return aviso(msg, opts); }
 
 /* ---------- Login (OAuth com PKCE) ---------- */
 
