@@ -15,3 +15,11 @@ export function ilha(vista, Tela, props = {}) {
   vista.append(alvo);
   vivas.push(mount(Tela, { target: alvo, props }));
 }
+
+/** Monta `Tela` num contêiner solto (display: contents) e o devolve, para telas em JS que ainda montam a vista com nós de DOM. */
+export function montar(Tela, props = {}) {
+  const alvo = document.createElement('div');
+  alvo.style.display = 'contents';
+  vivas.push(mount(Tela, { target: alvo, props }));
+  return alvo;
+}
