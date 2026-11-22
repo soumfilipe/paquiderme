@@ -22,6 +22,7 @@ export async function iniciarAtualizacao() {
     return; // sem SW o app funciona, só não abre offline
   }
   const r = registro;
+  if (!r) return;
   avisarSeEsperando(r);
   r.addEventListener('updatefound', () => {
     const novo = r.installing;
