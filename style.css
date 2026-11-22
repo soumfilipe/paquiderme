@@ -40,19 +40,27 @@ button, input, select, textarea {
   color: inherit;
 }
 
+/* botões e entradas seguem o Rochedo (rochedo/botao.css, campo.css): pílula, 44 px, mono */
 button {
   background: var(--surface-2);
   border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 10px 14px;
+  border-radius: var(--ro-raio-pilula);
+  padding: 10px 16px;
+  font-family: var(--ro-fonte-mono);
+  font-size: 13px;
+  font-weight: 700;
   cursor: pointer;
 }
+/* ações com rótulo: alvo de toque de 44 px */
+button.primary, button.with-icon, button.row-btn, button.more, .list-row button:not(.list-title), .filter-actions button { min-height: var(--ro-alvo); }
+/* botões que são linhas de conteúdo (nome, handle, opção) mantêm a fonte de texto */
+button.pick-row, button.acc-row, button.sheet-item, button.tag-row, button.sg-item, button.poll-choice, button.list-title,
+button.link, button.cm-alt, button.edited, button.more-btn, button.tag-name, button.tr-btn, button.more-text, button.count-btn { font: inherit; }
 
 button.primary {
   background: var(--accent);
   color: var(--accent-ink);
   border-color: transparent;
-  font-weight: 600;
 }
 
 button.link {
@@ -66,8 +74,9 @@ input, select, textarea {
   width: 100%;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 12px;
+  border-radius: var(--ro-raio-campo);
+  min-height: var(--ro-alvo);
+  padding: 10px 14px;
   /* 16px+ evita o zoom automático do Safari ao focar */
   font-size: 16px;
 }
