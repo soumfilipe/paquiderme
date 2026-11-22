@@ -5,6 +5,7 @@ import {
 import 'rochedo';
 import './style.css';
 import { estado, reiniciar } from './src/estado.svelte.js';
+import { registrar, canon, atualizar, esquecer, limpar as limparPublicacoes } from './src/publicacoes.svelte.js';
 import { desmontarIlhas, ilha } from './src/ilhas.js';
 import Saude from './src/telas/Saude.svelte';
 import Filtros from './src/telas/Filtros.svelte';
@@ -250,7 +251,7 @@ function activate(s) {
   liveClose(); live.base = ''; live.query = false; live.tries = 0;
   session = s;
   store.set('session', s);
-  reiniciar(mkState());
+  reiniciar(mkState()); limparPublicacoes();
   Object.assign(pushState, { loading: false, supported: false, standalone: false, sub: null, error: null, loaded: false });
   setUnread(false);
   appStarted = false;
@@ -279,7 +280,7 @@ async function logout({ revoke = true, message = '' } = {}) {
   session = null;
   if (gone) store.set('sessions', sessions().filter((x) => !sameAcc(x, gone)));
   const next = sessions()[0];
-  reiniciar(mkState());
+  reiniciar(mkState()); limparPublicacoes();
   if (next) { activate(next); if (message) toast(message); return; }
   showLogin(message);
 }
@@ -324,6 +325,7 @@ async function api(path, { method = 'GET', params, body, form, headers = {}, hos
     err.status = res.status;
     throw err;
   }
+  if (target === session.host) registrar(json);
   return json;
 }
 
@@ -663,6 +665,7 @@ function quoteEl(q, host) {
 }
 
 function statusEl(s, { readonly = false, host = null } = {}) {
+  if (!host) s = canon(s); // versão mais recente (curtidas, edições) vinda de qualquer tela
   const sh = s.reblog || s;
   const hits = revealed.has(sh.id) ? [] : filterHits(s);
   if (hits.length) {
@@ -993,7 +996,7 @@ const cacheKey = (kind) => `cache.${session.host}.${session.account.id}.${kind}`
 
 // mensagens diretas nunca ficam guardadas no aparelho (nem no cache de avisos)
 const isDirect = (it) => ((it.status || it).visibility === 'direct') || (it.reblog && it.reblog.visibility === 'direct');
-const cacheable = (items) => items.filter((it) => !isDirect(it)).slice(0, CACHE_MAX);
+const cacheable = (items) => items.filter((it) => !isDirect(it)).slice(0, CACHE_MAX).map(canon);
 
 function saveCache(kind) {
   if (!session || !CACHE_KINDS.includes(kind)) return;
@@ -1425,10 +1428,10 @@ function liveMessage(raw) {
   let m;
   try { m = JSON.parse(raw); } catch { return; }
   const data = () => { try { return JSON.parse(m.payload); } catch { return null; } };
-  if (m.event === 'update') { const s = data(); if (s) liveHome(s); }
+  if (m.event === 'update') { const s = data(); if (s) { registrar(s); liveHome(s); } }
   else if (m.event === 'status.update') { const s = data(); if (s) replaceStatus(s); }
   else if (m.event === 'delete') { removeStatus(String(m.payload)); }
-  else if (m.event === 'notification') { const n = data(); if (n) liveNotification(n); }
+  else if (m.event === 'notification') { const n = data(); if (n) { registrar(n); liveNotification(n); } }
 }
 
 const atTop = () => window.scrollY < 80 && !$('#composer').open;
@@ -3330,19 +3333,14 @@ function eachStatusList(fn) {
 }
 
 function replaceStatus(u) {
-  const swap = (s) => (s.id === u.id ? u : (s.reblog && s.reblog.id === u.id ? { ...s, reblog: u } : s));
-  eachStatusList((l) => { l.items = l.items.map(swap); });
-  state.notifications.items = state.notifications.items.map((n) => (n.status ? { ...n, status: swap(n.status) } : n));
-  [state.me, ...state.profiles].forEach((p) => {
-    if (!p) return;
-    if (p.type === 'thread') { p.status = swap(p.status); p.ancestors = p.ancestors.map(swap); p.descendants = p.descendants.map(swap); }
-    else if (p.pinned) p.pinned = p.pinned.map(swap);
-  });
+  const t = activeThread();
+  if (!(t && t.host)) atualizar(u); // thread de outra instância: os ids não são os nossos
   render();
 }
 
 function removeStatus(id) {
   const keep = (s) => s.id !== id && !(s.reblog && s.reblog.id === id);
+  esquecer(id);
   eachStatusList((l) => { l.items = l.items.filter(keep); });
   state.notifications.items = state.notifications.items.filter((n) => !n.status || keep(n.status));
   [state.me, ...state.profiles].forEach((p) => {
