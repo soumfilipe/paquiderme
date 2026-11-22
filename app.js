@@ -10,6 +10,8 @@ import { desmontarIlhas, ilha, montar, reativas } from './src/ilhas.js';
 import LinhaDoTempo from './src/telas/LinhaDoTempo.svelte';
 import Avisos from './src/telas/Avisos.svelte';
 import BarraAbas from './src/telas/BarraAbas.svelte';
+import Cabecalho from './src/telas/Cabecalho.svelte';
+import Conversa from './src/telas/Conversa.svelte';
 import ListaContas from './src/telas/ListaContas.svelte';
 import EmAlta from './src/telas/EmAlta.svelte';
 import Resultados from './src/telas/Resultados.svelte';
@@ -716,7 +718,7 @@ async function loadThread(t) {
   t.loading = true;
   t.error = null;
   busy(+1);
-  render();
+  if (reativas.get('thread') !== t) render();
   try {
     const opts = { host: t.host, auth: !t.host };
     const [ctx, fresh] = await Promise.all([
@@ -733,11 +735,11 @@ async function loadThread(t) {
     t.loading = false;
     busy(-1);
     if (session && aberta(t)) {
-      render();
+      if (reativas.get('thread') !== t) render();
       if (t.loaded && !t.scrolled) {
         t.scrolled = true;
-        const f = document.querySelector('.thread-item.focal');
-        if (f && t.ancestors.length) f.scrollIntoView({ block: 'start' });
+        // depois de a tela reagir aos dados novos
+        setTimeout(() => { const f = document.querySelector('.thread-item.focal'); if (f && t.ancestors.length) f.scrollIntoView({ block: 'start' }); });
       }
     }
   }
@@ -745,31 +747,8 @@ async function loadThread(t) {
 
 function threadView(view, t) {
   view.append(profileBar('Conversa', closeProfile));
-  const opts = { readonly: !!t.host, host: t.host };
-  const item = (cls, s, depth = 0) => {
-    return h('div', { class: `thread-item ${cls}`, style: `--d:${Math.min(depth, 5)}` }, statusEl(s, { ...opts, focal: cls === 'focal' }));
-  };
-  t.ancestors.forEach((s) => view.append(item('ancestor', s)));
-  view.append(item('focal', t.status));
-  // A API não garante a ordem em árvore: monta a árvore pelas respostas (in_reply_to_id) e percorre em profundidade.
-  const kids = new Map();
-  const ids = new Set(t.descendants.map((s) => s.id));
-  ids.add(t.status.id);
-  t.descendants.forEach((s) => {
-    const parent = ids.has(s.in_reply_to_id) ? s.in_reply_to_id : t.status.id; // órfãs ficam ligadas à publicação em foco
-    if (!kids.has(parent)) kids.set(parent, []);
-    kids.get(parent).push(s);
-  });
-  const byDate = (x, y) => (x.created_at < y.created_at ? -1 : x.created_at > y.created_at ? 1 : 0);
-  kids.forEach((list) => list.sort(byDate));
-  const walk = (id, d) => (kids.get(id) || []).forEach((s) => { view.append(item('reply', s, d)); walk(s.id, d + 1); });
-  walk(t.status.id, 1);
-  if (t.loading) view.append(loadingState('Carregando conversa…'));
-  else if (t.error) {
-    view.append(errorState(t.error, () => loadThread(t)));
-  } else if (t.loaded && !t.descendants.length) {
-    view.append(emptyState(t.ancestors.length ? 'Sem respostas ainda.' : 'Ninguém respondeu ainda.'));
-  }
+  reativas.set('thread', t);
+  ilha(view, Conversa, { t, c: ctxLista(), aoTentar: () => loadThread(t) });
 }
 
 /* ---------- Cache local (abrir offline e voltar de onde parou) ---------- */
@@ -2037,11 +2016,9 @@ function followBtn(p) {
   }, label);
 }
 
-function profileBar(title, onBack, extra) {
-  return h('header', { class: 'ro-cabecalho ro-cabecalho--barra profile-bar' },
-    onBack ? h('button', { type: 'button', class: 'ro-botao ro-botao--quieto ro-botao--icone icon-btn', 'aria-label': 'Voltar', onclick: onBack }, svgIcon('back', 22)) : null,
-    h('strong', { class: 'ro-cabecalho__titulo' }, title),
-    extra);
+// Barra do topo (Svelte). `acoes`: [{ aria, icone, aoClicar }] à direita.
+function profileBar(title, onBack, acoes = []) {
+  return montar(Cabecalho, { titulo: title, aoVoltar: onBack, acoes });
 }
 
 function accountRowEl(s) {
@@ -2100,11 +2077,10 @@ function profileView(view, p) {
 
   const a = p.account;
   const self = a.id === session.account.id;
-  const gear = isRoot
-    ? h('span', { class: 'push-right bar-actions' },
-      h('button', { type: 'button', class: 'ro-botao ro-botao--quieto ro-botao--icone icon-btn', 'aria-label': 'Trocar de conta', onclick: accountsSheet }, svgIcon('users', 22)),
-      h('button', { type: 'button', class: 'ro-botao ro-botao--quieto ro-botao--icone icon-btn', 'aria-label': 'Configurações do app', onclick: () => { state.settingsOpen = true; window.scrollTo(0, 0); render(); loadPush(); } }, svgIcon('settings', 22)))
-    : null;
+  const gear = isRoot ? [
+    { aria: 'Trocar de conta', icone: 'users', aoClicar: accountsSheet },
+    { aria: 'Configurações do app', icone: 'settings', aoClicar: () => { state.settingsOpen = true; window.scrollTo(0, 0); render(); loadPush(); } },
+  ] : [];
   view.append(profileBar(nameNode(a), isRoot ? null : closeProfile, gear));
 
   ilha(view, Perfil, { c: {
