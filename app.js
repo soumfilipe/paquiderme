@@ -10,6 +10,10 @@ import { desmontarIlhas, ilha, montar, reativas } from './src/ilhas.js';
 import LinhaDoTempo from './src/telas/LinhaDoTempo.svelte';
 import Publicacao from './src/telas/Publicacao.svelte';
 import { SvelteMap } from 'svelte/reactivity';
+import { compose as composeEstado, limites, ui as composeUi, reiniciarCompose } from './src/composicao.svelte.js';
+import ComposicaoExtras from './src/telas/ComposicaoExtras.svelte';
+import ComposicaoSugestoes from './src/telas/ComposicaoSugestoes.svelte';
+import ComposicaoFerramentas from './src/telas/ComposicaoFerramentas.svelte';
 import Saude from './src/telas/Saude.svelte';
 import Filtros from './src/telas/Filtros.svelte';
 import HashtagsSeguidas from './src/telas/HashtagsSeguidas.svelte';
@@ -2778,8 +2782,9 @@ function bindPullToRefresh() {
 /* ---------- Compositor ---------- */
 
 const mkCompose = () => ({ replyTo: null, edit: null, key: null, media: [], poll: null, sensitive: false, scheduledAt: '', lang: store.get('lang', '') });
-let compose = mkCompose();
-let limits = { translation: false, maxChars: 500, maxMedia: 4, pollOptions: 4, pollChars: 50, pollMin: 300, pollMax: 2629746 };
+const compose = composeEstado; // estado reativo (src/composicao.svelte.js)
+reiniciarCompose(mkCompose());
+const limits = limites;
 
 const LANGS = [['', 'Automático (padrão da conta)'], ['pt', 'Português'], ['en', 'English'], ['es', 'Español'], ['fr', 'Français'], ['de', 'Deutsch'], ['it', 'Italiano'], ['ja', '日本語'], ['zh', '中文'], ['ru', 'Русский'], ['ar', 'العربية']];
 
@@ -2794,7 +2799,7 @@ function saveDraft() {
 function openComposer({ replyTo = null, edit = null, share = '', quote = null } = {}) {
   hideSuggest();
   compose.media.forEach((m) => m.preview && m.preview.startsWith('blob:') && URL.revokeObjectURL(m.preview));
-  compose = mkCompose();
+  reiniciarCompose(mkCompose());
   compose.replyTo = replyTo;
   compose.edit = edit;
   compose.quote = quote;
@@ -2804,7 +2809,6 @@ function openComposer({ replyTo = null, edit = null, share = '', quote = null } 
   closeVisMenu();
   const note = $('#reply-to');
   $('#text').disabled = false;
-  $('#vis-menu').parentElement.hidden = !!edit;
   if (edit) {
     $('#text').value = '';
     $('#text').disabled = true;
@@ -2844,7 +2848,6 @@ function openComposer({ replyTo = null, edit = null, share = '', quote = null } 
     note.hidden = true;
     if (share) { const cur = $('#text').value.trimEnd(); $('#text').value = cur ? `${cur}\n\n${share}` : share; saveDraft(); }
   }
-  renderComposeExtras();
   updateCount();
   $('#composer').showModal();
   fitComposer();
@@ -2853,77 +2856,23 @@ function openComposer({ replyTo = null, edit = null, share = '', quote = null } 
   if (!edit) { t.focus(); t.setSelectionRange(t.value.length, t.value.length); }
 }
 
-// Anexos, enquete, idioma e botões que dependem deles
-function renderComposeExtras() {
-  const box = $('#compose-media');
-  box.hidden = compose.media.length === 0;
-  box.replaceChildren(...compose.media.map((m, i) => {
-    const thumb = h('div', { class: `cm-item${m.uploading ? ' loading' : ''}` },
-      m.type === 'video' || m.type === 'gifv' ? h('div', { class: 'cm-video' }, '▶') : h('img', { src: m.preview, alt: m.description || 'Anexo' }),
-      m.uploading ? h('span', { class: 'cm-spin' }, svgIcon('refresh', 20)) : null,
-      h('button', { type: 'button', class: 'cm-x', 'aria-label': 'Remover anexo', onclick: () => removeMedia(i) }, svgIcon('close', 14)),
-      h('button', { type: 'button', class: `cm-alt${m.description ? ' set' : ''}`, disabled: m.uploading, 'aria-label': 'Descrição para acessibilidade', onclick: () => editAlt(m) }, 'ALT'));
-    return thumb;
-  }));
-  $('#sens-btn').hidden = compose.media.length === 0;
-  const sb = $('#sched-btn');
-  if (sb) { sb.hidden = !!compose.edit; sb.classList.toggle('active', !!compose.scheduledAt); sb.setAttribute('aria-pressed', compose.scheduledAt ? 'true' : 'false'); sb.title = compose.scheduledAt ? `Agendada para ${new Date(compose.scheduledAt).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}` : 'Agendar publicação'; }
-  $('#sens-btn').setAttribute('aria-pressed', compose.sensitive ? 'true' : 'false');
-  $('#sens-btn').classList.toggle('active', compose.sensitive);
-  $('#media-btn').disabled = !!compose.poll || compose.media.length >= limits.maxMedia || (compose.edit && !!compose.edit.poll);
-  const pollOk = !compose.media.length && !compose.edit;
-  $('#poll-btn').disabled = !pollOk;
-  $('#poll-btn').setAttribute('aria-pressed', compose.poll ? 'true' : 'false');
-  renderPollEditor();
-  const l = LANGS.find(([c]) => c === compose.lang);
-  const lb = $('#lang-btn');
-  lb.replaceChildren(...[svgIcon('language', 22), compose.lang ? h('span', { class: 'tool-badge' }, compose.lang.toUpperCase()) : null].filter(Boolean));
-  lb.setAttribute('aria-pressed', compose.lang ? 'true' : 'false');
-  lb.title = l ? l[1] : compose.lang;
-}
-
-function renderPollEditor() {
-  const box = $('#compose-poll');
-  const p = compose.poll;
-  box.hidden = !p;
-  if (!p) { box.replaceChildren(); return; }
-  const durations = [[300, '5 min'], [1800, '30 min'], [3600, '1 h'], [21600, '6 h'], [86400, '1 dia'], [259200, '3 dias'], [604800, '7 dias']]
-    .filter(([s]) => s >= limits.pollMin && s <= limits.pollMax);
-  if (!durations.some(([s]) => s === p.expires_in)) p.expires_in = (durations[Math.min(4, durations.length - 1)] || [86400])[0];
-  box.replaceChildren(
-    ...p.options.map((t, i) => {
-      const input = h('input', { value: t, maxlength: String(limits.pollChars), placeholder: `Opção ${i + 1}`, 'aria-label': `Opção ${i + 1}` });
-      input.addEventListener('input', () => { p.options[i] = input.value; saveDraft(); });
-      return h('div', { class: 'cp-opt' }, input,
-        p.options.length > 2 ? h('button', { type: 'button', class: 'ro-botao ro-botao--quieto ro-botao--icone icon-btn', 'aria-label': 'Remover opção', onclick: () => { p.options.splice(i, 1); renderPollEditor(); saveDraft(); } }, svgIcon('close', 16)) : null);
-    }),
-    h('div', { class: 'cp-row' },
-      p.options.length < limits.pollOptions ? h('button', { type: 'button', class: 'chip ro-chip', onclick: () => { p.options.push(''); renderPollEditor(); } }, '+ Opção') : null,
-      h('button', { type: 'button', class: 'chip ro-chip', 'aria-pressed': p.multiple ? 'true' : 'false', onclick: () => { p.multiple = !p.multiple; renderPollEditor(); saveDraft(); } }, 'Múltipla escolha')),
-    h('div', { class: 'cp-row', role: 'group', 'aria-label': 'Duração' }, ...durations.map(([s, label]) =>
-      h('button', { type: 'button', class: 'chip ro-chip', 'aria-pressed': p.expires_in === s ? 'true' : 'false', onclick: () => { p.expires_in = s; renderPollEditor(); saveDraft(); } }, label))));
-}
-
 function togglePoll() {
   compose.poll = compose.poll ? null : { options: ['', ''], expires_in: 86400, multiple: false };
-  renderComposeExtras();
   saveDraft();
-  if (compose.poll) { const f = $('#compose-poll input'); if (f) f.focus(); }
+  if (compose.poll) setTimeout(() => { const f = $('#compose-poll input'); if (f) f.focus(); });
 }
 
 function removeMedia(i) {
   const m = compose.media[i];
   if (m && m.preview && m.preview.startsWith('blob:')) URL.revokeObjectURL(m.preview);
   compose.media.splice(i, 1);
-  renderComposeExtras();
 }
 
 function editAlt(m) {
   const t = h('textarea', { class: 'sheet-text', rows: '5', maxlength: '1500', placeholder: 'Descreva a imagem para quem não pode vê-la', 'aria-label': 'Descrição' }, m.description || '');
   openSheet('Descrição da mídia', [{ label: 'Salvar descrição', icon: 'check', onclick: async () => {
     m.description = t.value.trim();
-    renderComposeExtras();
-    if (m.id && !m.existing) { try { await api(`/api/v1/media/${m.id}`, { method: 'PUT', body: { description: m.description } }); } catch (e) { toast(e.message); } }
+      if (m.id && !m.existing) { try { await api(`/api/v1/media/${m.id}`, { method: 'PUT', body: { description: m.description } }); } catch (e) { toast(e.message); } }
   } }], h('div', { class: 'sheet-form' }, t));
 }
 
@@ -2951,10 +2900,9 @@ async function addMedia(files) {
   for (const file of files) {
     if (compose.media.length >= limits.maxMedia) { toast(`Máximo de ${limits.maxMedia} anexos.`); break; }
     const type = file.type.startsWith('video/') ? 'video' : file.type.startsWith('audio/') ? 'audio' : 'image';
-    const item = { id: null, uploading: true, preview: URL.createObjectURL(file), description: '', type };
-    compose.media.push(item);
-    renderComposeExtras();
-    try {
+    compose.media.push({ id: null, uploading: true, preview: URL.createObjectURL(file), description: '', type });
+    const item = compose.media[compose.media.length - 1]; // o proxy do estado: mudanças nele chegam à tela
+      try {
       const f = type === 'image' && file.type !== 'image/gif' && file.size > 2 * 1024 * 1024 ? await shrinkImage(file) : file;
       const fd = new FormData();
       fd.append('file', f, f.name || (type === 'image' ? 'foto.jpg' : 'arquivo'));
@@ -2967,14 +2915,13 @@ async function addMedia(files) {
       if (i >= 0) compose.media.splice(i, 1);
       toast(e.message);
     }
-    renderComposeExtras();
-  }
+    }
 }
 
 function langSheet() {
   openSheet('Idioma da publicação', LANGS.map(([code, label]) => ({
     label, icon: code === compose.lang ? 'check' : null,
-    onclick: () => { compose.lang = code; store.set('lang', code); renderComposeExtras(); saveDraft(); },
+    onclick: () => { compose.lang = code; store.set('lang', code); saveDraft(); },
   })));
 }
 
@@ -2991,9 +2938,9 @@ function scheduleSheet() {
     onclick: () => {
       const d = new Date(input.value);
       if (!input.value || isNaN(d) || d.getTime() < Date.now() + 5 * 60000) { err.textContent = 'Escolha um horário a pelo menos 5 minutos daqui.'; return false; }
-      compose.scheduledAt = d.toISOString(); renderComposeExtras(); return true;
+      compose.scheduledAt = d.toISOString(); return true;
     },
-  }, compose.scheduledAt ? { label: 'Remover agendamento', icon: 'close', onclick: () => { compose.scheduledAt = ''; renderComposeExtras(); } } : null].filter(Boolean),
+  }, compose.scheduledAt ? { label: 'Remover agendamento', icon: 'close', onclick: () => { compose.scheduledAt = ''; } } : null].filter(Boolean),
   h('div', { class: 'sheet-form' }, input, err));
 }
 
@@ -3010,9 +2957,8 @@ const suggest = { seq: 0, timer: null, emojis: null, emojiLoad: null };
 function hideSuggest() {
   suggest.seq++;
   clearTimeout(suggest.timer);
-  const box = $('#suggest');
-  box.hidden = true;
-  box.replaceChildren();
+  composeUi.sugestoes = [];
+  $('#suggest').hidden = true;
 }
 
 function suggestToken() {
@@ -3059,10 +3005,8 @@ function suggestUpdate() {
     } catch { items = []; }
     if (seq !== suggest.seq) return; // chegou depois de o texto mudar
     const box = $('#suggest');
-    if (!items.length) { box.hidden = true; box.replaceChildren(); return; }
-    box.replaceChildren(...items.map((it) => h('button', { type: 'button', class: 'sg-item', onclick: () => suggestPick(tok, it) },
-      it.img ? h('img', { class: it.round ? 'ro-avatar avatar' : 'emoji-img', src: safeUrl(it.img), alt: '' }) : null,
-      h('span', { class: 'sg-text' }, h('strong', {}, it.label), it.sub ? h('span', { class: 'muted small' }, it.sub) : null))));
+    if (!items.length) { hideSuggest(); return; }
+    composeUi.sugestoes = items.map((it) => ({ ...it, tok }));
     box.hidden = false;
     box.scrollLeft = 0;
   }, tok.kind === ':' ? 0 : 180);
@@ -3085,7 +3029,8 @@ function suggestPick(tok, it) {
 function updateCount() {
   const t = $('#text');
   fitText();
-  $('#count').textContent = `${t.value.length}/${t.maxLength}`;
+  composeUi.chars = t.value.length;
+  composeUi.max = t.maxLength;
 }
 
 const VIS = [
@@ -3094,35 +3039,42 @@ const VIS = [
   ['private', 'Só seguidores', 'Apenas quem segue você'],
   ['direct', 'Menção direta', 'Apenas as pessoas mencionadas'],
 ];
-let composeVis = 'public';
 
 function setVisibility(v) {
-  composeVis = VIS.some(([id]) => id === v) ? v : 'public';
-  $('#vis-btn').replaceChildren(svgIcon('vis-' + composeVis, 22), svgIcon('chev', 14));
-  $('#vis-btn').title = VIS.find(([id]) => id === composeVis)[1];
-  $('#vis-menu').replaceChildren(...VIS.map(([id, label, desc]) =>
-    h('button', {
-      type: 'button', role: 'menuitemradio', 'aria-checked': id === composeVis ? 'true' : 'false',
-      onclick: () => { setVisibility(id); closeVisMenu(); $('#text').focus(); },
-    }, svgIcon('vis-' + id, 22), h('span', {}, label, h('small', {}, desc)), id === composeVis ? svgIcon('check', 18) : h('span'))));
+  composeUi.vis = VIS.some(([id]) => id === v) ? v : 'public';
 }
 
 function closeVisMenu() {
-  $('#vis-menu').hidden = true;
-  $('#vis-btn').setAttribute('aria-expanded', 'false');
+  composeUi.visMenu = false;
 }
 
 function setCw(on) {
   const cw = $('#cw');
   cw.hidden = !on;
   if (!on) cw.value = '';
-  $('#cw-btn').setAttribute('aria-pressed', on ? 'true' : 'false');
+  composeUi.cwOn = on;
   if (on) cw.focus();
 }
 
 // No iOS, ao abrir o teclado a janela visível encolhe e desloca; acompanhamos para o
 // cabeçalho (Cancelar/Publicar) não ficar sob a barra de status.
 // Arrastar a alça para baixo fecha o compositor (o rascunho fica guardado); tocar nela também fecha.
+// Partes reativas do compositor (o texto e o aviso de conteúdo seguem nativos)
+function mountComposicao() {
+  mount(ComposicaoExtras, { target: $('#compose-extras'), props: {
+    removerMidia: removeMedia, editarAlt: editAlt, rascunho: saveDraft,
+  } });
+  mount(ComposicaoSugestoes, { target: $('#suggest'), props: {
+    escolher: (it) => suggestPick(it.tok, it), seguro: safeUrl,
+  } });
+  mount(ComposicaoFerramentas, { target: $('#compose-tools'), props: {
+    visibilidades: VIS, idiomas: LANGS,
+    aoVisibilidade: (id) => { setVisibility(id); closeVisMenu(); $('#text').focus(); },
+    aoAviso: () => { setCw(!composeUi.cwOn); saveDraft(); },
+    aoAnexos: addMedia, aoEnquete: togglePoll, aoAgendar: scheduleSheet, aoIdioma: langSheet,
+  } });
+}
+
 function bindComposerSwipe() {
   // com o compositor aberto, a página de trás não rola nem "estica": só o texto pode rolar
   document.addEventListener('touchmove', (e) => {
@@ -3208,7 +3160,7 @@ async function submitCompose(e) {
         body: {
           status: text || undefined,
           spoiler_text: cw,
-          visibility: composeVis,
+          visibility: composeUi.vis,
           in_reply_to_id: compose.replyTo ? compose.replyTo.id : undefined,
           quoted_status_id: compose.quote ? compose.quote.id : undefined,
           media_ids: compose.media.length ? compose.media.map((m) => m.id) : undefined,
@@ -3218,7 +3170,7 @@ async function submitCompose(e) {
           scheduled_at: compose.scheduledAt || undefined,
         },
       });
-      if (!compose.replyTo && !compose.quote) { store.del(draftKey()); store.set('lastVisibility', composeVis); }
+      if (!compose.replyTo && !compose.quote) { store.del(draftKey()); store.set('lastVisibility', composeUi.vis); }
     }
     $('#composer').close();
     toast(compose.edit ? 'Publicação editada' : compose.scheduledAt ? `Agendada para ${new Date(compose.scheduledAt).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}` : 'Publicado');
@@ -3291,7 +3243,7 @@ async function startApp() {
     limits.translation = !!cfg.translation?.enabled;
     if (cfg.statuses?.max_characters) { limits.maxChars = cfg.statuses.max_characters; $('#text').maxLength = limits.maxChars; }
     if (cfg.statuses?.max_media_attachments) limits.maxMedia = cfg.statuses.max_media_attachments;
-    if (cfg.polls) limits = { ...limits, pollOptions: cfg.polls.max_options || 4, pollChars: cfg.polls.max_characters_per_option || 50, pollMin: cfg.polls.min_expiration || 300, pollMax: cfg.polls.max_expiration || 2629746 };
+    if (cfg.polls) Object.assign(limits, { pollOptions: cfg.polls.max_options || 4, pollChars: cfg.polls.max_characters_per_option || 50, pollMin: cfg.polls.min_expiration || 300, pollMax: cfg.polls.max_expiration || 2629746 });
   } catch { /* mantém os padrões */ }
   if (limits.translation && session) render();
   liveConnect();
@@ -3378,25 +3330,14 @@ function bindUi() {
   $('#composer').addEventListener('close', () => { closeVisMenu(); hideSuggest(); });
   // não deixa os botões da barra tirarem o foco do texto (o teclado não fecha)
   $('#compose-tools').addEventListener('pointerdown', (e) => { if (!e.target.closest('input, textarea')) e.preventDefault(); });
-  $('#vis-btn').addEventListener('click', () => {
-    const open = $('#vis-menu').hidden;
-    $('#vis-menu').hidden = !open;
-    $('#vis-btn').setAttribute('aria-expanded', open ? 'true' : 'false');
-  });
-  $('#cw-btn').addEventListener('click', () => { setCw($('#cw').hidden); saveDraft(); });
   document.addEventListener('click', (e) => { if (!e.target.closest('.menu-wrap')) closeVisMenu(); });
   $('#compose-form').addEventListener('submit', submitCompose);
   $('#text').addEventListener('input', () => { updateCount(); saveDraft(); suggestUpdate(); });
   $('#text').addEventListener('keyup', (e) => { if (e.key.startsWith('Arrow')) suggestUpdate(); });
   $('#text').addEventListener('click', suggestUpdate);
   $('#suggest').addEventListener('pointerdown', (e) => e.preventDefault());
+  mountComposicao();
   $('#cw').addEventListener('input', saveDraft);
-  $('#media-btn').addEventListener('click', () => $('#media-input').click());
-  $('#media-input').addEventListener('change', (ev) => { const fs = [...ev.target.files]; ev.target.value = ''; addMedia(fs); });
-  $('#poll-btn').addEventListener('click', togglePoll);
-  $('#lang-btn').addEventListener('click', langSheet);
-  $('#sched-btn').addEventListener('click', scheduleSheet);
-  $('#sens-btn').addEventListener('click', () => { compose.sensitive = !compose.sensitive; renderComposeExtras(); });
 }
 
 // Recebe texto/link de outros apps: ?text=…&url=…&title=… (Android via share_target; iOS via Atalhos)

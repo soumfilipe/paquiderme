@@ -81,28 +81,11 @@
         <p id="reply-to" class="muted small" hidden></p>
         <input id="cw" placeholder="Aviso de conteúdo" maxlength="200" hidden>
         <textarea id="text" placeholder="No que você está pensando?" maxlength="2000"></textarea>
-        <div id="compose-media" class="compose-media" hidden></div>
-        <div id="compose-poll" class="compose-poll" hidden></div>
-        <div class="compose-meta">
-          <button type="button" class="chip" id="sens-btn" aria-pressed="false" hidden>Mídia sensível</button>
-          <span id="count" class="muted small">0/2000</span>
-        </div>
+        <div id="compose-extras" style="display: contents"></div>
       </div>
       <div id="suggest" class="suggest" hidden></div>
     <p id="compose-error" class="error ro-faixa ro-faixa--erro" role="alert"></p>
-      <div class="compose-tools" id="compose-tools">
-        <div class="menu-wrap">
-          <button type="button" class="tool" id="vis-btn" aria-haspopup="menu" aria-expanded="false" aria-label="Visibilidade"></button>
-          <div id="vis-menu" role="menu" hidden></div>
-        </div>
-        <button type="button" class="tool" id="cw-btn" aria-pressed="false" aria-label="Aviso de conteúdo"><span data-icon="warn" data-size="22"></span></button>
-        <button type="button" class="tool" id="media-btn" aria-label="Anexar foto ou vídeo"><span data-icon="image" data-size="22"></span></button>
-        <button type="button" class="tool" id="poll-btn" aria-pressed="false" aria-label="Enquete"><span data-icon="poll" data-size="22"></span></button>
-        <button type="button" class="tool" id="sched-btn" aria-pressed="false" aria-label="Agendar publicação"><span data-icon="clock" data-size="22"></span></button>
-        <button type="button" class="tool" id="lang-btn" aria-pressed="false" aria-label="Idioma da publicação"></button>
-        <input type="file" id="media-input" accept="image/*,video/*,audio/*" multiple hidden>
-        <button type="submit" class="ro-botao ro-botao--principal" id="post-btn">Publicar</button>
-      </div>
+      <div class="compose-tools" id="compose-tools"></div>
     </form>
   </dialog>
 
