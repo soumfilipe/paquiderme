@@ -4,6 +4,7 @@ import {
 } from './lib.js';
 import { aviso } from './rochedo/aviso.js';
 import { confirmar } from './rochedo/confirmar.js';
+import { abrirFolha } from './rochedo/folha.js';
 
 // anti-clickjacking: o GitHub Pages não permite cabeçalhos (frame-ancestors), então o app se recusa a rodar dentro de um iframe
 if (window.top !== window.self) { document.documentElement.hidden = true; try { window.top.location = window.self.location; } catch { /* sem permissão: fica oculto */ } }
@@ -231,7 +232,7 @@ function activate(s) {
   Object.assign(pushState, { loading: false, supported: false, standalone: false, sub: null, error: null, loaded: false });
   setUnread(false);
   appStarted = false;
-  try { $('#sheet').close(); } catch { /* ignora */ }
+  closeSheet();
   $('#view').replaceChildren();
   window.scrollTo(0, 0);
   startApp();
@@ -386,16 +387,19 @@ async function toggleBookmark(btn, sh) {
 
 /* ---------- Menu inferior (folha de ações) ---------- */
 
+// Adaptador fino sobre a folha do Rochedo: mantém a assinatura antiga (label/icon/danger/onclick/keepOpen).
+const sheetEl = () => document.querySelector('dialog.ro-folha[open]');
+function closeSheet() { const d = sheetEl(); if (d) d.close(); }
 function openSheet(title, items, content) {
-  const d = $('#sheet');
-  d.replaceChildren(h('div', { class: 'sheet-box' },
-    title ? h('p', { class: 'sheet-title muted small' }, title) : null,
-    content || null,
-    ...items.map((it) => it.href
-      ? h('a', { class: 'sheet-item', href: safeUrl(it.href), target: '_blank', rel: 'noopener noreferrer', onclick: () => d.close() }, it.icon ? svgIcon(it.icon, 20) : null, it.label)
-      : h('button', { type: 'button', class: `sheet-item${it.danger ? ' danger' : ''}`, onclick: async () => { if (it.keepOpen) { if (await it.onclick() !== false) d.close(); return; } d.close(); await it.onclick(); } }, it.icon ? svgIcon(it.icon, 20) : null, it.label)),
-    h('button', { type: 'button', class: 'sheet-item cancel', onclick: () => d.close() }, 'Cancelar')));
-  if (!d.open) d.showModal();
+  closeSheet();
+  abrirFolha({
+    titulo: title || undefined,
+    conteudo: content || undefined,
+    itens: items.map((it) => ({
+      rotulo: it.label, icone: it.icon, perigo: it.danger, aoClicar: it.onclick, manterAberta: it.keepOpen,
+      href: it.href ? safeUrl(it.href) : undefined,
+    })),
+  });
 }
 
 // Some das listas as publicações de uma conta que acabou de ser silenciada/bloqueada
@@ -516,7 +520,7 @@ async function openHistory(sh) {
       v.spoiler_text ? h('div', { class: 'hist-cw' }, emojiFragment(v.spoiler_text, v.emojis)) : null,
       h('div', { class: 'body' }, sanitizeHtml(v.content, v.emojis)))));
     openSheet('Histórico de edições', [], box);
-  } catch (e) { toast(e.message); try { $('#sheet').close(); } catch { /* ignora */ } }
+  } catch (e) { toast(e.message); closeSheet(); }
 }
 
 async function statusMenu(sh) {
@@ -1041,7 +1045,7 @@ function shortcutKey(e) {
   if (!session || e.metaKey || e.ctrlKey || e.altKey) return;
   const t = e.target;
   if (t && t.matches && t.matches('input, textarea, select, [contenteditable]')) return;
-  if ($('#composer').open || $('#sheet').open || $('#viewer').open) return;
+  if ($('#composer').open || sheetEl() || $('#viewer').open) return;
   const list = [...document.querySelectorAll('#view .status[data-id]')];
   if (!list.length) return;
   const move = (d) => {
@@ -2459,7 +2463,7 @@ function accountRowEl(s) {
   const active = session && sameAcc(s, session);
   const acc = s.account;
   return h('button', { type: 'button', class: `acc-row${active ? ' active' : ''}`, 'aria-current': active ? 'true' : null,
-    onclick: () => { if (active) { $('#sheet').close(); return; } activate(s); } },
+    onclick: () => { if (active) { closeSheet(); return; } activate(s); } },
     h('img', { class: 'avatar', src: safeUrl(acc.avatar), alt: '' }),
     h('span', { class: 'acc-info' },
       h('strong', {}, nameNode(acc)),
@@ -2468,7 +2472,7 @@ function accountRowEl(s) {
 }
 
 function addAccount() {
-  try { $('#sheet').close(); } catch { /* ignora */ }
+  closeSheet();
   state.settingsOpen = false;
   showLogin('', { add: true });
 }
@@ -3685,8 +3689,6 @@ function bindUi() {
   });
   store.del('draft'); // rascunho antigo, sem dono: agora é guardado por conta
   document.addEventListener('keydown', shortcutKey);
-  const sheet = $('#sheet');
-  sheet.addEventListener('click', (e) => { if (e.target === sheet) sheet.close(); });
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.addEventListener('message', (e) => {
       if (e.data && e.data.type === 'open-notifications' && session) { selectTab('notifications'); loadList('notifications'); }

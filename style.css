@@ -54,7 +54,7 @@ button {
 /* ações com rótulo: alvo de toque de 44 px */
 button.primary, button.with-icon, button.row-btn, button.more, .list-row button:not(.list-title), .filter-actions button { min-height: var(--ro-alvo); }
 /* botões que são linhas de conteúdo (nome, handle, opção) mantêm a fonte de texto */
-button.pick-row, button.acc-row, button.sheet-item, button.tag-row, button.sg-item, button.poll-choice, button.list-title,
+button.pick-row, button.acc-row, button.tag-row, button.sg-item, button.poll-choice, button.list-title,
 button.link, button.cm-alt, button.edited, button.more-btn, button.tag-name, button.tr-btn, button.more-text, button.count-btn { font: inherit; }
 
 button.primary {
@@ -457,18 +457,6 @@ dialog#composer { overscroll-behavior: contain; }
 .pinned { border-bottom: 1px solid var(--border); background: color-mix(in srgb, var(--accent) 5%, transparent); }
 .pinned .status { border-bottom: 0; }
 .pinned-note { display: flex; align-items: center; gap: 6px; padding: 10px 16px 0; }
-dialog#sheet {
-  position: fixed; inset: auto 0 0 0; margin: 0 auto; width: min(560px, 100%); max-width: 100%; max-height: 85vh;
-  padding: 0; border: 0; background: var(--surface); color: var(--text);
-  border-radius: 18px 18px 0 0; overflow: auto; overscroll-behavior: contain;
-}
-dialog#sheet::backdrop { background: rgb(0 0 0 / .5); }
-.sheet-box { display: flex; flex-direction: column; padding: 8px 8px calc(var(--sab) + 12px); }
-.sheet-title { margin: 8px 12px 4px; }
-.sheet-item { display: flex; align-items: center; gap: 12px; padding: 14px 12px; border: 0; border-radius: 12px; background: none; color: var(--text); font-size: 17px; text-align: left; text-decoration: none; width: 100%; }
-.sheet-item:active { background: var(--surface-2); }
-.sheet-item.danger { color: var(--danger); }
-.sheet-item.cancel { justify-content: center; margin-top: 6px; background: var(--surface-2); }
 .sheet-form { padding: 4px 12px 8px; display: flex; flex-direction: column; gap: 10px; }
 .sheet-text { width: 100%; resize: none; }
 .sheet-check { font-size: 14px; display: flex; gap: 8px; align-items: center; }

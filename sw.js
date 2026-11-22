@@ -1,7 +1,7 @@
 // Service worker do Paquiderme: só guarda o "casco" do app para abrir rápido/offline.
 // Nunca toca em chamadas à API (são de outra origem e passam direto).
 // Ao mudar qualquer arquivo do app, aumente a versão abaixo.
-const CACHE = 'paquiderme-v50';
+const CACHE = 'paquiderme-v51';
 const SHELL = [
   './',
   'index.html',
@@ -10,6 +10,7 @@ const SHELL = [
   'rochedo/icones.js',
   'rochedo/aviso.js',
   'rochedo/confirmar.js',
+  'rochedo/folha.js',
   'rochedo/VERSAO',
   'style.css',
   'rochedo/rochedo.css',
