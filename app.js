@@ -7,12 +7,14 @@ import './style.css';
 import { desmontarIlhas, ilha } from './src/ilhas.js';
 import Saude from './src/telas/Saude.svelte';
 import Filtros from './src/telas/Filtros.svelte';
+import FiltroEdicao from './src/telas/FiltroEdicao.svelte';
 import Agendadas from './src/telas/Agendadas.svelte';
 import ContasEntrada from './src/telas/ContasEntrada.svelte';
 import Membros from './src/telas/Membros.svelte';
 import Listas from './src/telas/Listas.svelte';
 import EscolherListas from './src/telas/EscolherListas.svelte';
 import Perfil from './src/telas/Perfil.svelte';
+import PerfilEdicao from './src/telas/PerfilEdicao.svelte';
 import AvisoAtualizacao from './src/telas/AvisoAtualizacao.svelte';
 import { iniciarAtualizacao } from './src/atualizacao.svelte.js';
 import { mount } from 'svelte';
@@ -1953,49 +1955,17 @@ function openFilterEdit(parent, f) {
 }
 
 function filterEditView(view, e) {
-  const f = e.form;
   view.append(profileBar(e.filter ? 'Editar filtro' : 'Novo filtro', closeProfile));
-  const title = h('input', { value: f.title, maxlength: '100', placeholder: 'Ex.: Spoilers', autocomplete: 'off' });
-  title.addEventListener('input', () => { f.title = title.value; });
-  const words = h('textarea', { rows: '5', placeholder: 'Uma palavra ou frase por linha', autocapitalize: 'none', spellcheck: 'false' }, f.words);
-  words.addEventListener('input', () => { f.words = words.value; });
-  const field = (label, el) => h('label', { class: 'edit-field' }, h('span', { class: 'muted small' }, label), el);
-  const chips = (items, isOn, onTap) => h('div', { class: 'cp-row' }, ...items.map(([val, label]) => {
-    const b = h('button', { type: 'button', class: 'chip ro-chip', 'aria-pressed': isOn(val) ? 'true' : 'false' }, label);
-    b.addEventListener('click', () => { onTap(val); b.parentElement.querySelectorAll('.chip').forEach((c, i) => { const on = isOn(items[i][0]); c.classList.toggle('active', on); c.setAttribute('aria-pressed', on ? 'true' : 'false'); }); });
-    return b;
-  }));
-  const whole = h('button', { type: 'button', class: `pick-row${f.whole ? ' on' : ''}`, role: 'switch', 'aria-checked': f.whole ? 'true' : 'false' },
-    h('span', { class: 'pick-box' }, f.whole ? svgIcon('check', 16) : null), 'Só palavras inteiras');
-  whole.addEventListener('click', () => {
-    f.whole = !f.whole; whole.classList.toggle('on', f.whole); whole.setAttribute('aria-checked', String(f.whole));
-    whole.querySelector('.pick-box').replaceChildren(...(f.whole ? [svgIcon('check', 16)] : []));
-  });
-  const expItems = [...(e.filter && e.filter.expires_at ? [['keep', `Manter (${new Date(e.filter.expires_at).toLocaleDateString('pt-BR')})`]] : []), ...FILTER_EXP];
-  const expOn = (v) => (f.exp === undefined ? v === (e.filter && e.filter.expires_at ? 'keep' : '') : f.exp === v);
-  view.append(h('div', { class: 'edit-form' },
-    field('Nome do filtro', title),
-    field('Palavras ou frases', words),
-    whole,
-    h('strong', {}, 'Onde vale'),
-    chips(FILTER_CTX, (c) => f.context.has(c), (c) => { if (f.context.has(c)) f.context.delete(c); else f.context.add(c); }),
-    h('strong', {}, 'O que fazer'),
-    chips([['warn', 'Recolher com aviso'], ['hide', 'Ocultar']], (v) => f.action === v, (v) => { f.action = v; }),
-    h('strong', {}, 'Duração'),
-    chips(expItems, expOn, (v) => { f.exp = v === 'keep' ? undefined : v; })));
-  view.append(h('p', { id: 'filter-error', class: 'error ro-faixa ro-faixa--erro', role: 'alert' }, e.error || ''));
-  view.append(h('div', { class: 'save-bar' }, h('button', { type: 'button', class: 'ro-botao ro-botao--principal edit-save', onclick: () => saveFilter(e) }, 'Salvar')));
+  ilha(view, FiltroEdicao, { e, contextos: FILTER_CTX, duracoes: FILTER_EXP, aoSalvar: (f) => saveFilter(e, f) });
   e.built = true;
 }
 
-async function saveFilter(e) {
-  const f = e.form;
-  const err = $('#filter-error');
+// Valida e grava; lança Error(mensagem) para a tela mostrar.
+async function saveFilter(e, f) {
   const list = [...new Set(f.words.split('\n').map((x) => x.trim()).filter(Boolean))];
-  if (!f.title.trim()) { err.textContent = 'Dê um nome ao filtro.'; return; }
-  if (!list.length) { err.textContent = 'Inclua pelo menos uma palavra.'; return; }
-  if (!f.context.size) { err.textContent = 'Escolha onde o filtro vale.'; return; }
-  err.textContent = '';
+  if (!f.title.trim()) throw new Error('Dê um nome ao filtro.');
+  if (!list.length) throw new Error('Inclua pelo menos uma palavra.');
+  if (!f.context.size) throw new Error('Escolha onde o filtro vale.');
   const body = { title: f.title.trim(), context: [...f.context], filter_action: f.action };
   if (f.exp !== undefined) body.expires_in = f.exp;
   const old = e.filter ? e.filter.keywords || [] : [];
@@ -2003,16 +1973,11 @@ async function saveFilter(e) {
   old.forEach((k) => { if (!list.includes(k.keyword)) attrs.push({ id: k.id, _destroy: true }); else if (k.whole_word !== f.whole) attrs.push({ id: k.id, keyword: k.keyword, whole_word: f.whole }); });
   list.forEach((w) => { if (!old.some((k) => k.keyword === w)) attrs.push({ keyword: w, whole_word: f.whole }); });
   body.keywords_attributes = attrs;
-  const btn = $('.edit-save'); btn.disabled = true; btn.textContent = 'Salvando…';
-  try {
-    if (e.filter) await api(`/api/v2/filters/${e.filter.id}`, { method: 'PUT', body });
-    else await api('/api/v2/filters', { method: 'POST', body });
-    toast('Filtro salvo');
-    closeProfile();
-    e.parent.reload();
-  } catch (ex) {
-    e.error = ex.message; err.textContent = ex.message; btn.disabled = false; btn.textContent = 'Salvar';
-  }
+  if (e.filter) await api(`/api/v2/filters/${e.filter.id}`, { method: 'PUT', body });
+  else await api('/api/v2/filters', { method: 'POST', body });
+  toast('Filtro salvo');
+  closeProfile();
+  e.parent.reload();
 }
 
 /* ----- Editar perfil ----- */
@@ -2078,11 +2043,10 @@ function closeEditProfile(e) {
   openSheet('Descartar alterações do perfil?', [{ label: 'Descartar', danger: true, onclick: () => closeProfile() }]);
 }
 
+// Grava o perfil; lança Error(mensagem) para a tela mostrar.
 async function saveEditProfile(e) {
   if (e.saving || !e.loaded) return;
   e.saving = true;
-  const btns = document.querySelectorAll('.edit-save');
-  btns.forEach((b) => { b.disabled = true; b.textContent = 'Salvando…'; });
   const f = e.form;
   const fd = new FormData();
   fd.append('display_name', f.display_name);
@@ -2105,9 +2069,7 @@ async function saveEditProfile(e) {
   } catch (err) {
     e.saving = false;
     e.error = err.message;
-    btns.forEach((b) => { b.disabled = false; b.textContent = 'Salvar'; });
-    const box = document.querySelector('#edit-error');
-    if (box) box.textContent = err.message;
+    throw err;
   }
 }
 
@@ -2115,65 +2077,7 @@ function editProfileView(view, e) {
   view.append(profileBar('Editar perfil', () => closeEditProfile(e)));
   if (e.error && !e.loaded) { view.append(errorState(e.error, () => loadEditProfile(e))); return; }
   if (!e.loaded) { view.append(loadingState('Carregando…')); return; }
-  const f = e.form;
-  const touch = () => { e.dirty = true; };
-
-  // capa e avatar: o lápis sobre a imagem abre o seletor de arquivo
-  const header = h('div', { class: 'banner edit-banner', style: e.headerUrl && !/missing\.png/.test(e.headerUrl) ? `background-image:url("${e.headerUrl}")` : null });
-  const avatar = h('img', { class: 'profile-avatar', src: e.avatarUrl, alt: 'Foto atual' });
-  const overlay = (label, kind, w, hh, onPreview) => {
-    const input = h('input', { type: 'file', accept: 'image/*', hidden: true, 'aria-label': label });
-    input.addEventListener('change', async () => {
-      const file = input.files && input.files[0];
-      if (!file) return;
-      try {
-        const blob = await prepImage(file, w, hh);
-        e[kind + 'Blob'] = blob;
-        onPreview(URL.createObjectURL(blob));
-        touch();
-      } catch (err) { toast(err.message); }
-      input.value = '';
-    });
-    return h('span', { class: `edit-overlay ${kind}` }, input,
-      h('button', { class: 'ro-botao', type: 'button', 'aria-label': label, onclick: () => input.click() }, svgIcon('compose', 22)));
-  };
-  header.append(overlay('Trocar capa', 'header', 1500, 500, (url) => { header.style.backgroundImage = `url("${url}")`; }));
-  view.append(header);
-  view.append(h('div', { class: 'edit-media' },
-    h('div', { class: 'edit-avatar' }, avatar, overlay('Trocar foto', 'avatar', 400, 400, (url) => { avatar.src = url; })),
-    h('p', { class: 'muted small' }, 'Toque no lápis para trocar. As imagens são reduzidas e recortadas ao centro (foto quadrada, capa 3:1).')));
-
-  const field = (label, el) => h('label', { class: 'edit-field' }, h('span', { class: 'muted small' }, label), el);
-  const name = h('input', { value: f.display_name, maxlength: '30', autocomplete: 'off' });
-  name.addEventListener('input', () => { f.display_name = name.value; touch(); });
-  const note = h('textarea', { rows: '6', maxlength: '500' }, f.note);
-  note.addEventListener('input', () => { f.note = note.value; touch(); });
-  view.append(h('div', { class: 'edit-form' },
-    field('Nome', name),
-    field('Bio', note),
-    h('strong', {}, 'Campos do perfil'),
-    ...f.fields.map((x, i) => {
-      const n = h('input', { value: x.name, placeholder: 'Rótulo (ex.: Site)', maxlength: '255', 'aria-label': `Campo ${i + 1}: rótulo` });
-      const v = h('input', { value: x.value, placeholder: 'Conteúdo (ex.: https://…)', maxlength: '255', autocapitalize: 'none', 'aria-label': `Campo ${i + 1}: conteúdo` });
-      n.addEventListener('input', () => { x.name = n.value; touch(); });
-      v.addEventListener('input', () => { x.value = v.value; touch(); });
-      return h('div', { class: 'edit-pair' }, n, v);
-    })));
-  const sw = (label, key) => {
-    const b = h('button', { type: 'button', class: `pick-row${f[key] ? ' on' : ''}`, role: 'switch', 'aria-checked': f[key] ? 'true' : 'false' },
-      h('span', { class: 'pick-box' }, f[key] ? svgIcon('check', 16) : null), label);
-    b.addEventListener('click', () => {
-      f[key] = !f[key]; touch();
-      b.classList.toggle('on', f[key]); b.setAttribute('aria-checked', f[key] ? 'true' : 'false');
-      b.querySelector('.pick-box').replaceChildren(...(f[key] ? [svgIcon('check', 16)] : []));
-    });
-    return b;
-  };
-  view.append(sw('Perfil fechado (aprovar quem pode me seguir)', 'locked'));
-  view.append(sw('Conta automatizada (robô)', 'bot'));
-  view.append(sw('Aparecer no diretório e nas sugestões', 'discoverable'));
-  view.append(h('p', { id: 'edit-error', class: 'error ro-faixa ro-faixa--erro', role: 'alert' }, e.error || ''));
-  view.append(h('div', { class: 'save-bar' }, h('button', { type: 'button', class: 'ro-botao ro-botao--principal edit-save', onclick: () => saveEditProfile(e) }, 'Salvar')));
+  ilha(view, PerfilEdicao, { e, preparar: prepImage, aoSalvar: () => saveEditProfile(e), aoMudar: () => { e.dirty = true; }, aviso: toast });
   e.built = true;
 }
 
