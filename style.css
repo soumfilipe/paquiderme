@@ -40,32 +40,17 @@ button, input, select, textarea {
   color: inherit;
 }
 
-/* botões e entradas seguem o Rochedo (rochedo/botao.css, campo.css): pílula, 44 px, mono */
+/* Botões com aparência vêm do Rochedo (.ro-botao). Os demais são controles locais (linhas, abas, ícones de ação)
+   e só herdam o texto: cada classe define o próprio visual. */
 button {
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: var(--ro-raio-pilula);
-  padding: 10px 16px;
-  font-family: var(--ro-fonte-mono);
-  font-size: 13px;
-  font-weight: 700;
-  cursor: pointer;
-}
-/* ações com rótulo: alvo de toque de 44 px */
-button.primary, button.with-icon, button.row-btn, button.more, .list-row button:not(.list-title), .filter-actions button { min-height: var(--ro-alvo); }
-/* botões que são linhas de conteúdo (nome, handle, opção) mantêm a fonte de texto */
-button.pick-row, button.sg-item, button.poll-choice, button.list-title,
-button.link, button.cm-alt, button.edited, button.more-btn, button.tag-name, button.tr-btn, button.more-text, button.count-btn { font: inherit; }
-
-button.primary {
-  background: var(--accent);
-  color: var(--accent-ink);
-  border-color: transparent;
-}
-
-button.link {
   background: none;
   border: 0;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+button.link {
   color: var(--accent);
   padding: 10px 4px;
 }
@@ -197,7 +182,7 @@ button[data-confirmando] { background: var(--danger); border-color: var(--danger
 .notif-kind { font-size: 13px; color: var(--muted); margin-bottom: 6px; }
 .notif-kind strong { color: var(--text); }
 
-.more, .empty { display: block; margin: 16px auto; }
+.more, .empty { display: flex; margin: 16px auto; }
 .empty { text-align: center; color: var(--muted); }
 
 .account-card { padding: 20px 16px; display: grid; gap: 12px; }
@@ -338,7 +323,7 @@ button.tag-row { padding: 6px 16px; border-bottom: 1px solid var(--border); bord
 
 .tag-head { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--border); }
 .tag-head strong { color: var(--accent); font-size: 18px; }
-.icon-btn { background: none; border: 0; padding: 8px; display: grid; place-items: center; }
+a.icon-btn { padding: 8px; display: grid; place-items: center; min-width: 44px; min-height: 44px; }
 
 .inst-form { display: flex; gap: 8px; padding: 12px 16px 4px; }
 .inst-form input { flex: 1; min-width: 0; }
@@ -427,8 +412,7 @@ dialog#composer { overscroll-behavior: contain; }
 .list-row { display: flex; align-items: center; gap: 8px; padding: 10px 16px; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
 .list-row input { flex: 1; min-width: 0; }
 .list-row .list-title { flex: 1 1 100%; text-align: left; background: none; border: 0; padding: 4px 0; font-size: 17px; font-weight: 600; color: var(--text); }
-.row-btn { margin-left: auto; flex: none; }
-.row-btn.danger, .list-row .danger { color: var(--danger); border-color: var(--danger); }
+.row-btn { flex: none; }
 .pick-row { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; padding: 14px 16px; border: 0; border-bottom: 1px solid var(--border); border-radius: 0; background: none; font-size: 16px; }
 .switch-row { justify-content: space-between; }
 .switch-row .ro-interruptor { display: inline-block; pointer-events: none; }
@@ -460,7 +444,6 @@ html[data-motion='reduce'] *, html[data-motion='reduce'] *::before, html[data-mo
   animation: none !important; transition: none !important; scroll-behavior: auto !important;
 }
 .actions button { min-height: 44px; }
-.icon-btn { min-width: 44px; min-height: 44px; }
 .status { content-visibility: auto; contain-intrinsic-size: auto 180px; }
 .status.focal, .pinned .status { content-visibility: visible; }
 .cache-note { margin: 0; padding: 8px 16px; font-size: 13px; color: var(--muted); background: var(--surface-2); border-bottom: 1px solid var(--border); }

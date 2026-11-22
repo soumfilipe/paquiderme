@@ -84,14 +84,14 @@ function emptyState(title, text) {
 function errorState(msg, retry) {
   return h('div', { class: 'ro-estado ro-estado--erro', role: 'alert' },
     h('p', { class: 'ro-estado__titulo' }, 'Não deu certo'), h('p', {}, msg),
-    h('button', { type: 'button', onclick: retry }, 'Tentar de novo'));
+    h('button', { class: 'ro-botao', type: 'button', onclick: retry }, 'Tentar de novo'));
 }
 function loadingState(label = 'Carregando…') {
   return h('div', { class: 'ro-carregando', 'aria-busy': 'true', 'aria-label': label }, h('i'), h('i'), h('i'));
 }
 /* Ação destrutiva em dois toques (Rochedo) */
 function dangerBtn(label, confirmLabel, onConfirm) {
-  const b = h('button', { type: 'button' }, label);
+  const b = h('button', { class: 'ro-botao ro-botao--perigo', type: 'button' }, label);
   confirmar(b, onConfirm, { rotulo: confirmLabel });
   return b;
 }
@@ -858,7 +858,7 @@ function requestButtons(n, wrap) {
       box.replaceChildren(h('span', { class: 'muted' }, done));
     } catch (e) { toast(e.message); box.querySelectorAll('button').forEach((b) => { b.disabled = false; }); }
   } }, label);
-  box.append(act('authorize', 'Aceitar', 'Pedido aceito', 'primary'), act('reject', 'Rejeitar', 'Pedido rejeitado', ''));
+  box.append(act('authorize', 'Aceitar', 'Pedido aceito', 'ro-botao ro-botao--principal'), act('reject', 'Rejeitar', 'Pedido rejeitado', 'ro-botao'));
   return box;
 }
 
@@ -881,7 +881,7 @@ function moreButton(kind) {
   }
   if (!st.items.length) return emptyState('Nada por aqui ainda.');
   if (!st.more) return h('p', { class: 'empty' }, 'Fim.');
-  return h('button', { type: 'button', class: 'more', onclick: () => loadList(kind, true) }, 'Carregar mais');
+  return h('button', { type: 'button', class: 'ro-botao more', onclick: () => loadList(kind, true) }, 'Carregar mais');
 }
 
 /* ----- Conversas (threads) ----- */
@@ -1195,7 +1195,7 @@ function openViewer(items, start = 0) {
   const go = (n) => track.scrollTo({ left: n * track.clientWidth, behavior: 'smooth' });
   d.replaceChildren(
     track,
-    h('div', { class: 'v-top' }, h('button', { type: 'button', class: 'icon-btn', 'aria-label': 'Fechar', onclick: close }, svgIcon('close', 24)), counter, openLink),
+    h('div', { class: 'v-top' }, h('button', { type: 'button', class: 'ro-botao ro-botao--quieto ro-botao--icone icon-btn', 'aria-label': 'Fechar', onclick: close }, svgIcon('close', 24)), counter, openLink),
     items.length > 1 ? h('button', { type: 'button', class: 'v-nav prev', 'aria-label': 'Anterior', onclick: () => go(cur - 1) }, svgIcon('back', 26)) : null,
     items.length > 1 ? h('button', { type: 'button', class: 'v-nav next', 'aria-label': 'Próxima', onclick: () => go(cur + 1) }, svgIcon('back', 26)) : null,
     (bottom.append(altBtn, alt), bottom));
@@ -1228,7 +1228,7 @@ function pollEl(sh, { readonly = false } = {}) {
   const mine = new Set(p.own_votes || []);
 
   if (canVote) {
-    const voteBtn = h('button', { type: 'button', class: 'primary', disabled: true }, 'Votar');
+    const voteBtn = h('button', { type: 'button', class: 'ro-botao ro-botao--principal', disabled: true }, 'Votar');
     p.options.forEach((o, i) => {
       const b = h('button', { type: 'button', class: 'poll-choice', role: p.multiple ? 'checkbox' : 'radio', 'aria-checked': 'false' },
         h('span', { class: `pick-box${p.multiple ? '' : ' round'}` }), emojiFragment(o.title, p.emojis));
@@ -1584,10 +1584,10 @@ function pushSection() {
       const on = !!(ps.sub.alerts && ps.sub.alerts[k]);
       box.append(switchRow(label, on, () => setPushAlert(k, !on)));
     });
-    box.append(h('button', { type: 'button', onclick: disablePush }, 'Desativar avisos'));
+    box.append(h('button', { class: 'ro-botao', type: 'button', onclick: disablePush }, 'Desativar avisos'));
   } else {
     box.append(h('p', { class: 'muted small' }, 'Receba menções e novos seguidores mesmo com o app fechado. A instância envia direto ao seu aparelho; o Paquiderme não tem servidor.'));
-    box.append(h('button', { type: 'button', class: 'primary', onclick: enablePush }, 'Ativar avisos'));
+    box.append(h('button', { type: 'button', class: 'ro-botao ro-botao--principal', onclick: enablePush }, 'Ativar avisos'));
   }
   if (ps.error) box.append(h('p', { class: 'error ro-faixa ro-faixa--erro', role: 'alert' }, ps.error));
   return box;
@@ -1693,7 +1693,7 @@ async function createList(title) {
 function createListForm() {
   const input = h('input', { placeholder: 'Nome da nova lista', maxlength: '100', 'aria-label': 'Nome da nova lista' });
   return h('form', { class: 'inst-form', onsubmit: async (ev) => { ev.preventDefault(); await createList(input.value); input.value = ''; } },
-    input, h('button', { type: 'submit', class: 'primary' }, 'Criar'));
+    input, h('button', { type: 'submit', class: 'ro-botao ro-botao--principal' }, 'Criar'));
 }
 
 function openListsManage() {
@@ -1725,13 +1725,13 @@ function listRow(l, e) {
       } catch (err) { toast(err.message); }
     } },
     input,
-    h('button', { type: 'submit', class: 'primary' }, 'Salvar'),
-    h('button', { type: 'button', onclick: () => { e.editing = null; render(); } }, 'Cancelar'));
+    h('button', { type: 'submit', class: 'ro-botao ro-botao--principal' }, 'Salvar'),
+    h('button', { class: 'ro-botao', type: 'button', onclick: () => { e.editing = null; render(); } }, 'Cancelar'));
   }
   return h('div', { class: 'list-row' },
     h('button', { type: 'button', class: 'list-title link', onclick: () => { state.profiles = []; setHomeList(l.id); } }, l.title),
-    h('button', { type: 'button', onclick: () => openMembers(l) }, 'Membros'),
-    h('button', { type: 'button', onclick: () => { e.editing = l.id; render(); } }, 'Renomear'),
+    h('button', { class: 'ro-botao', type: 'button', onclick: () => openMembers(l) }, 'Membros'),
+    h('button', { class: 'ro-botao', type: 'button', onclick: () => { e.editing = l.id; render(); } }, 'Renomear'),
     dangerBtn('Excluir', 'Confirmar', async () => {
       try {
         await api(`/api/v1/lists/${l.id}`, { method: 'DELETE' });
@@ -1782,7 +1782,7 @@ function accountsEntryView(view, e) {
   if (e.error) view.append(errorState(e.error, () => loadAccountsEntry(e, e.items.length > 0)));
   else if (e.loading) view.append(loadingState('Carregando…'));
   else if (!e.items.length) view.append(emptyState('Ninguém por aqui.'));
-  else if (e.more) view.append(h('button', { type: 'button', class: 'more', onclick: () => loadAccountsEntry(e, true) }, 'Carregar mais'));
+  else if (e.more) view.append(h('button', { type: 'button', class: 'ro-botao more', onclick: () => loadAccountsEntry(e, true) }, 'Carregar mais'));
 }
 
 function openMembers(list) {
@@ -1813,7 +1813,7 @@ function personRow(a, label, onclick, cls = '') {
   return h('div', { class: 'ro-linha account-row', role: 'button', tabindex: '0', onclick: () => openProfile(a) },
     h('span', { class: 'ro-linha__inicio' }, h('img', { class: 'avatar', src: safeUrl(a.avatar_static || a.avatar), alt: '', loading: 'lazy' })),
     h('span', { class: 'ro-linha__corpo who' }, h('span', { class: 'ro-linha__titulo name' }, nameNode(a)), h('span', { class: 'ro-linha__sub acct' }, '@' + a.acct)),
-    h('span', { class: 'ro-linha__fim' }, h('button', { type: 'button', class: `row-btn ${cls}`, onclick: (ev) => { ev.stopPropagation(); onclick(ev.currentTarget); } }, label)));
+    h('span', { class: 'ro-linha__fim' }, h('button', { type: 'button', class: `ro-botao row-btn ${cls}`, onclick: (ev) => { ev.stopPropagation(); onclick(ev.currentTarget); } }, label)));
 }
 
 function membersView(view, e) {
@@ -1827,7 +1827,7 @@ function membersView(view, e) {
       e.results = await api('/api/v1/accounts/search', { params: { q: e.q, following: 'true', limit: 10 } });
     } catch (err) { toast(err.message); return; }
     render();
-  } }, input, h('button', { type: 'submit', class: 'primary' }, 'Buscar')));
+  } }, input, h('button', { type: 'submit', class: 'ro-botao ro-botao--principal' }, 'Buscar')));
 
   const memberIds = new Set(e.items.map((m) => m.id));
   if (e.results) {
@@ -1925,7 +1925,7 @@ async function loadFilters(e) {
 function filtersView(view, e) {
   view.append(profileBar('Filtros', closeProfile));
   view.append(h('p', { class: 'muted small filters-note' }, 'Filtros ficam na sua conta da instância e valem em qualquer app. Publicações que casarem aparecem recolhidas, com um botão para mostrar.'));
-  view.append(h('button', { type: 'button', class: 'with-icon primary add-filter', onclick: () => openFilterEdit(e, null) }, svgIcon('add', 18), 'Novo filtro'));
+  view.append(h('button', { type: 'button', class: 'ro-botao ro-botao--principal add-filter', onclick: () => openFilterEdit(e, null) }, svgIcon('add', 18), 'Novo filtro'));
   if (e.error) { view.append(errorState(e.error, () => e.reload())); return; }
   if (!e.loaded) { view.append(loadingState('Carregando…')); return; }
   if (!e.items.length) { view.append(emptyState('Nenhum filtro ainda.')); return; }
@@ -1936,7 +1936,7 @@ function filtersView(view, e) {
     view.append(h('div', { class: 'filter-row' },
       h('div', { class: 'filter-info' }, h('strong', {}, f.title), h('span', { class: 'muted small' }, kw || 'sem palavras'), h('span', { class: 'muted small' }, meta)),
       h('div', { class: 'filter-actions' },
-        h('button', { type: 'button', onclick: () => openFilterEdit(e, f) }, 'Editar'),
+        h('button', { class: 'ro-botao', type: 'button', onclick: () => openFilterEdit(e, f) }, 'Editar'),
         dangerBtn('Excluir', 'Confirmar', async () => {
           try {
             await api(`/api/v2/filters/${f.id}`, { method: 'DELETE' });
@@ -2005,7 +2005,7 @@ function healthView(view, e) {
     h('div', {}, h('strong', {}, c.name), h('div', {}, c.text), c.detail ? h('div', { class: 'muted small' }, c.detail) : null))));
   view.append(h('div', { class: 'health-foot' },
     h('span', { class: 'muted small' }, `Verificado às ${e.at.toLocaleTimeString('pt-BR', { timeStyle: 'short' })}`),
-    h('button', { type: 'button', onclick: () => e.reload() }, 'Verificar de novo'),
+    h('button', { class: 'ro-botao', type: 'button', onclick: () => e.reload() }, 'Verificar de novo'),
     h('a', { class: 'link', href: `https://${session.host}/about`, target: '_blank', rel: 'noopener noreferrer' }, 'Sobre a instância')));
 }
 
@@ -2093,7 +2093,7 @@ function filterEditView(view, e) {
     h('strong', {}, 'Duração'),
     chips(expItems, expOn, (v) => { f.exp = v === 'keep' ? undefined : v; })));
   view.append(h('p', { id: 'filter-error', class: 'error ro-faixa ro-faixa--erro', role: 'alert' }, e.error || ''));
-  view.append(h('div', { class: 'save-bar' }, h('button', { type: 'button', class: 'primary edit-save', onclick: () => saveFilter(e) }, 'Salvar')));
+  view.append(h('div', { class: 'save-bar' }, h('button', { type: 'button', class: 'ro-botao ro-botao--principal edit-save', onclick: () => saveFilter(e) }, 'Salvar')));
   e.built = true;
 }
 
@@ -2244,7 +2244,7 @@ function editProfileView(view, e) {
       input.value = '';
     });
     return h('span', { class: `edit-overlay ${kind}` }, input,
-      h('button', { type: 'button', 'aria-label': label, onclick: () => input.click() }, svgIcon('compose', 22)));
+      h('button', { class: 'ro-botao', type: 'button', 'aria-label': label, onclick: () => input.click() }, svgIcon('compose', 22)));
   };
   header.append(overlay('Trocar capa', 'header', 1500, 500, (url) => { header.style.backgroundImage = `url("${url}")`; }));
   view.append(header);
@@ -2282,7 +2282,7 @@ function editProfileView(view, e) {
   view.append(sw('Conta automatizada (robô)', 'bot'));
   view.append(sw('Aparecer no diretório e nas sugestões', 'discoverable'));
   view.append(h('p', { id: 'edit-error', class: 'error ro-faixa ro-faixa--erro', role: 'alert' }, e.error || ''));
-  view.append(h('div', { class: 'save-bar' }, h('button', { type: 'button', class: 'primary edit-save', onclick: () => saveEditProfile(e) }, 'Salvar')));
+  view.append(h('div', { class: 'save-bar' }, h('button', { type: 'button', class: 'ro-botao ro-botao--principal edit-save', onclick: () => saveEditProfile(e) }, 'Salvar')));
   e.built = true;
 }
 
@@ -2435,7 +2435,7 @@ function followBtn(p) {
   const label = { blocked: 'Bloqueado', following: 'Seguindo', requested: 'Pedido enviado', none: 'Seguir' }[st] || 'Seguir';
   return h('button', {
     type: 'button',
-    class: st === 'none' || !st ? 'primary' : '',
+    class: st === 'none' || !st ? 'ro-botao ro-botao--principal' : 'ro-botao',
     disabled: !r || st === 'blocked',
     onclick: async (e) => {
       const btn = e.currentTarget;
@@ -2454,7 +2454,7 @@ function followBtn(p) {
 
 function profileBar(title, onBack, extra) {
   return h('div', { class: 'tag-head profile-bar' },
-    onBack ? h('button', { type: 'button', class: 'icon-btn', 'aria-label': 'Voltar', onclick: onBack }, svgIcon('back', 22)) : null,
+    onBack ? h('button', { type: 'button', class: 'ro-botao ro-botao--quieto ro-botao--icone icon-btn', 'aria-label': 'Voltar', onclick: onBack }, svgIcon('back', 22)) : null,
     h('strong', { class: 'profile-title' }, title),
     extra);
 }
@@ -2493,7 +2493,7 @@ function shareSection() {
       h('li', {}, 'Adicione a ação “Codificar URL” (entrada: Entrada do Atalho) e depois “Abrir URLs”.'),
       h('li', {}, 'Na URL, use o endereço abaixo seguido do resultado da codificação.')),
     h('code', { class: 'share-url' }, base),
-    h('button', { type: 'button', class: 'with-icon', onclick: async () => { try { await navigator.clipboard.writeText(base); toast('Endereço copiado'); } catch { toast('Não consegui copiar'); } } }, svgIcon('copy', 18), 'Copiar endereço'),
+    h('button', { type: 'button', class: 'ro-botao', onclick: async () => { try { await navigator.clipboard.writeText(base); toast('Endereço copiado'); } catch { toast('Não consegui copiar'); } } }, svgIcon('copy', 18), 'Copiar endereço'),
     h('p', { class: 'muted small' }, 'Atenção: no iPhone “Abrir URLs” abre o Safari, não o app instalado. Nesse caso o login do Safari é separado do app.'));
 }
 
@@ -2502,21 +2502,21 @@ function settingsView(view) {
   view.append(h('div', { class: 'account-card' },
     h('strong', {}, 'Contas'),
     h('div', { class: 'acc-list' }, ...sessions().map(accountRowEl)),
-    h('button', { type: 'button', class: 'with-icon', onclick: addAccount }, svgIcon('user-add', 18), 'Adicionar conta'),
+    h('button', { type: 'button', class: 'ro-botao', onclick: addAccount }, svgIcon('user-add', 18), 'Adicionar conta'),
     h('a', { href: `https://${session.host}/settings/profile`, target: '_blank', rel: 'noopener noreferrer' }, 'Editar perfil e preferências na instância'),
-    h('button', { type: 'button', class: 'with-icon', onclick: updateApp }, svgIcon('refresh', 18), 'Atualizar o app (limpar cache)'),
-    h('button', { type: 'button', class: 'with-icon', onclick: () => logout() }, svgIcon('logout', 18), sessions().length > 1 ? 'Sair desta conta' : 'Sair'),
+    h('button', { type: 'button', class: 'ro-botao', onclick: updateApp }, svgIcon('refresh', 18), 'Atualizar o app (limpar cache)'),
+    h('button', { type: 'button', class: 'ro-botao', onclick: () => logout() }, svgIcon('logout', 18), sessions().length > 1 ? 'Sair desta conta' : 'Sair'),
     h('p', { class: 'muted small' }, `${APP_NAME} · cliente estático, sem servidor próprio. O token fica só neste aparelho.`)));
   view.append(prefsSection());
   view.append(pushSection());
   view.append(shareSection());
   view.append(h('div', { class: 'account-card' },
     h('strong', {}, 'Conta e moderação'),
-    h('button', { type: 'button', class: 'with-icon', onclick: openFilters }, svgIcon('filter', 18), 'Filtros de palavras'),
-    h('button', { type: 'button', class: 'with-icon', onclick: openScheduled }, svgIcon('clock', 18), 'Publicações agendadas'),
-    h('button', { type: 'button', class: 'with-icon', onclick: openHealth }, svgIcon('refresh', 18), 'Status da instância'),
-    h('button', { type: 'button', class: 'with-icon', onclick: () => openAccountsEntry('Contas silenciadas', '/api/v1/mutes', 'unmute', 'Reativar') }, svgIcon('mute', 18), 'Contas silenciadas'),
-    h('button', { type: 'button', class: 'with-icon', onclick: () => openAccountsEntry('Contas bloqueadas', '/api/v1/blocks', 'unblock', 'Desbloquear') }, svgIcon('block', 18), 'Contas bloqueadas')));
+    h('button', { type: 'button', class: 'ro-botao', onclick: openFilters }, svgIcon('filter', 18), 'Filtros de palavras'),
+    h('button', { type: 'button', class: 'ro-botao', onclick: openScheduled }, svgIcon('clock', 18), 'Publicações agendadas'),
+    h('button', { type: 'button', class: 'ro-botao', onclick: openHealth }, svgIcon('refresh', 18), 'Status da instância'),
+    h('button', { type: 'button', class: 'ro-botao', onclick: () => openAccountsEntry('Contas silenciadas', '/api/v1/mutes', 'unmute', 'Reativar') }, svgIcon('mute', 18), 'Contas silenciadas'),
+    h('button', { type: 'button', class: 'ro-botao', onclick: () => openAccountsEntry('Contas bloqueadas', '/api/v1/blocks', 'unblock', 'Desbloquear') }, svgIcon('block', 18), 'Contas bloqueadas')));
 }
 
 function profileView(view, p) {
@@ -2533,8 +2533,8 @@ function profileView(view, p) {
   const self = a.id === session.account.id;
   const gear = isRoot
     ? h('span', { class: 'push-right bar-actions' },
-      h('button', { type: 'button', class: 'icon-btn', 'aria-label': 'Trocar de conta', onclick: accountsSheet }, svgIcon('users', 22)),
-      h('button', { type: 'button', class: 'icon-btn', 'aria-label': 'Configurações do app', onclick: () => { state.settingsOpen = true; window.scrollTo(0, 0); render(); loadPush(); } }, svgIcon('settings', 22)))
+      h('button', { type: 'button', class: 'ro-botao ro-botao--quieto ro-botao--icone icon-btn', 'aria-label': 'Trocar de conta', onclick: accountsSheet }, svgIcon('users', 22)),
+      h('button', { type: 'button', class: 'ro-botao ro-botao--quieto ro-botao--icone icon-btn', 'aria-label': 'Configurações do app', onclick: () => { state.settingsOpen = true; window.scrollTo(0, 0); render(); loadPush(); } }, svgIcon('settings', 22)))
     : null;
   view.append(profileBar(nameNode(a), isRoot ? null : closeProfile, gear));
 
@@ -2542,11 +2542,11 @@ function profileView(view, p) {
   view.append(hdr && !/missing\.png/.test(hdr) ? h('img', { class: 'banner', src: hdr, alt: '' }) : h('div', { class: 'banner' }));
 
   const actions = self
-    ? h('button', { type: 'button', onclick: openEditProfile }, 'Editar')
+    ? h('button', { class: 'ro-botao', type: 'button', onclick: openEditProfile }, 'Editar')
     : h('div', { class: 'profile-actions' },
-      p.rel && p.rel.following ? h('button', { type: 'button', onclick: () => openListPicker(a) }, 'Listas') : null,
+      p.rel && p.rel.following ? h('button', { class: 'ro-botao', type: 'button', onclick: () => openListPicker(a) }, 'Listas') : null,
       followBtn(p),
-      h('button', { type: 'button', class: 'icon-btn', 'aria-label': 'Mais opções da conta', onclick: () => accountMenu(a, p.rel) }, svgIcon('more', 22)));
+      h('button', { type: 'button', class: 'ro-botao ro-botao--quieto ro-botao--icone icon-btn', 'aria-label': 'Mais opções da conta', onclick: () => accountMenu(a, p.rel) }, svgIcon('more', 22)));
 
   const badges = [];
   if (a.bot) badges.push(['Robô', 'bot']);
@@ -2672,7 +2672,7 @@ function otherView(view) {
     spellcheck: 'false', inputmode: 'url', 'aria-label': 'Endereço da instância',
   });
   view.append(h('form', { class: 'inst-form', onsubmit: (e) => { e.preventDefault(); goOther(input.value); } },
-    input, h('button', { type: 'submit', class: 'primary' }, 'Ver')));
+    input, h('button', { type: 'submit', class: 'ro-botao ro-botao--principal' }, 'Ver')));
   const saved = store.get('otherHosts', []);
   if (saved.length) {
     view.append(h('div', { class: 'hosts' }, ...saved.map((host) =>
@@ -2781,14 +2781,14 @@ function searchView(view) {
     if (!s.type) view.append(h('h3', { class: 'section' }, 'Publicações'));
     statuses.forEach((st) => view.append(statusEl(st)));
   }
-  if (s.type && s.more) view.append(h('button', { type: 'button', class: 'more', onclick: () => runSearch(true) }, s.loading ? 'Carregando…' : 'Carregar mais'));
+  if (s.type && s.more) view.append(h('button', { type: 'button', class: 'ro-botao more', onclick: () => runSearch(true) }, s.loading ? 'Carregando…' : 'Carregar mais'));
 }
 
 function exploreView(view) {
   const ex = state.explore;
   if (ex.tag) {
     view.append(h('div', { class: 'tag-head' },
-      h('button', { type: 'button', class: 'icon-btn', 'aria-label': 'Voltar', onclick: closeTag }, svgIcon('back', 22)),
+      h('button', { type: 'button', class: 'ro-botao ro-botao--quieto ro-botao--icone icon-btn', 'aria-label': 'Voltar', onclick: closeTag }, svgIcon('back', 22)),
       h('strong', {}, '#' + ex.tag),
       ex.tagFollowing === null ? null : h('button', { type: 'button', class: 'chip ro-chip push-right', 'aria-pressed': ex.tagFollowing ? 'true' : 'false', onclick: () => toggleFollowTag(ex.tag) }, ex.tagFollowing ? 'Seguindo' : 'Seguir')));
     renderList(view, 'tag', (s) => statusEl(s));
@@ -2851,7 +2851,7 @@ function tagsView(view) {
   if (!f.items.length) { view.append(emptyState('Você ainda não segue hashtags. Abra uma hashtag e toque em Seguir: as publicações dela passam a aparecer no Início.')); return; }
   f.items.forEach((t) => view.append(h('div', { class: 'tag-row' },
     h('button', { type: 'button', class: 'tag-name', onclick: () => openTag(t.name) }, '#' + t.name),
-    h('button', { type: 'button', onclick: async () => {
+    h('button', { class: 'ro-botao', type: 'button', onclick: async () => {
       try { await api(`/api/v1/tags/${encodeURIComponent(t.name)}/unfollow`, { method: 'POST' }); f.items = f.items.filter((x) => x.name !== t.name); render(); } catch (e) { toast(e.message); }
     } }, 'Deixar de seguir'))));
 }
@@ -3242,7 +3242,7 @@ function renderPollEditor() {
       const input = h('input', { value: t, maxlength: String(limits.pollChars), placeholder: `Opção ${i + 1}`, 'aria-label': `Opção ${i + 1}` });
       input.addEventListener('input', () => { p.options[i] = input.value; saveDraft(); });
       return h('div', { class: 'cp-opt' }, input,
-        p.options.length > 2 ? h('button', { type: 'button', class: 'icon-btn', 'aria-label': 'Remover opção', onclick: () => { p.options.splice(i, 1); renderPollEditor(); saveDraft(); } }, svgIcon('close', 16)) : null);
+        p.options.length > 2 ? h('button', { type: 'button', class: 'ro-botao ro-botao--quieto ro-botao--icone icon-btn', 'aria-label': 'Remover opção', onclick: () => { p.options.splice(i, 1); renderPollEditor(); saveDraft(); } }, svgIcon('close', 16)) : null);
     }),
     h('div', { class: 'cp-row' },
       p.options.length < limits.pollOptions ? h('button', { type: 'button', class: 'chip ro-chip', onclick: () => { p.options.push(''); renderPollEditor(); } }, '+ Opção') : null,

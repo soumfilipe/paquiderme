@@ -29,19 +29,19 @@
     <form id="login-form">
       <label for="instance">Instância</label>
       <input id="instance" name="instance" value="organica.social" autocapitalize="none" autocorrect="off" spellcheck="false" inputmode="url" required>
-      <button type="submit" class="primary">Entrar</button>
+      <button type="submit" class="ro-botao ro-botao--principal">Entrar</button>
     </form>
     <details id="manual">
       <summary>Não voltou para o app depois de autorizar?</summary>
       <p class="muted small">No iPhone, o login dentro do app instalado às vezes abre numa janela separada. Use o código manual: toque abaixo, autorize, copie o código exibido e cole aqui.</p>
       <form id="manual-form">
-        <button type="button" id="manual-start">1. Abrir autorização manual</button>
+        <button type="button" class="ro-botao" id="manual-start">1. Abrir autorização manual</button>
         <input id="manual-code" placeholder="2. Cole o código aqui" autocapitalize="none" autocorrect="off" spellcheck="false">
-        <button type="submit" class="primary">3. Concluir login</button>
+        <button type="submit" class="ro-botao ro-botao--principal">3. Concluir login</button>
       </form>
     </details>
     <p id="login-add-note" class="muted small" hidden>Para entrar com outra conta, ela precisa estar ativa no navegador da instância (saia da outra lá, se for da mesma instância).</p>
-    <button type="button" id="login-cancel" hidden>Voltar para o app</button>
+    <button type="button" class="ro-botao" id="login-cancel" hidden>Voltar para o app</button>
     <p id="login-error" class="error ro-faixa ro-faixa--erro" role="alert"></p>
   </main>
 
@@ -61,7 +61,7 @@
       <form id="search-form" role="search">
         <span data-icon="search" data-size="20" class="dock-icon"></span>
         <input id="search-input" type="search" placeholder="Buscar contas, tags, links…" autocapitalize="none" autocorrect="off" spellcheck="false" enterkeyhint="search" aria-label="Buscar">
-        <button type="button" id="search-clear" class="icon-btn" aria-label="Limpar busca" hidden><span data-icon="close" data-size="18"></span></button>
+        <button type="button" id="search-clear" class="ro-botao ro-botao--quieto ro-botao--icone icon-btn" aria-label="Limpar busca" hidden><span data-icon="close" data-size="18"></span></button>
       </form>
     </div>
 
@@ -103,7 +103,7 @@
         <button type="button" class="tool" id="sched-btn" aria-pressed="false" aria-label="Agendar publicação"><span data-icon="clock" data-size="22"></span></button>
         <button type="button" class="tool" id="lang-btn" aria-pressed="false" aria-label="Idioma da publicação"></button>
         <input type="file" id="media-input" accept="image/*,video/*,audio/*" multiple hidden>
-        <button type="submit" class="primary" id="post-btn">Publicar</button>
+        <button type="submit" class="ro-botao ro-botao--principal" id="post-btn">Publicar</button>
       </div>
     </form>
   </dialog>
