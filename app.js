@@ -4,6 +4,7 @@ import {
 } from './lib.js';
 import 'rochedo';
 import './style.css';
+import { estado, reiniciar } from './src/estado.svelte.js';
 import { desmontarIlhas, ilha } from './src/ilhas.js';
 import Saude from './src/telas/Saude.svelte';
 import Filtros from './src/telas/Filtros.svelte';
@@ -95,7 +96,8 @@ const mkState = () => ({
     otherHost: store.get('otherHost', ''),
   },
 });
-let state = mkState();
+const state = estado;
+reiniciar(mkState());
 
 /* Estados (Rochedo): vazio, erro com "tentar de novo", carregando */
 function emptyState(title, text) {
@@ -248,7 +250,7 @@ function activate(s) {
   liveClose(); live.base = ''; live.query = false; live.tries = 0;
   session = s;
   store.set('session', s);
-  state = mkState();
+  reiniciar(mkState());
   Object.assign(pushState, { loading: false, supported: false, standalone: false, sub: null, error: null, loaded: false });
   setUnread(false);
   appStarted = false;
@@ -277,7 +279,7 @@ async function logout({ revoke = true, message = '' } = {}) {
   session = null;
   if (gone) store.set('sessions', sessions().filter((x) => !sameAcc(x, gone)));
   const next = sessions()[0];
-  state = mkState();
+  reiniciar(mkState());
   if (next) { activate(next); if (message) toast(message); return; }
   showLogin(message);
 }
@@ -908,7 +910,7 @@ function moreButton(kind) {
 
 function openThread(status, host = null) {
   state.profiles.push({
-    type: 'thread', status, host, ancestors: [], descendants: [],
+    uid: crypto.randomUUID(), type: 'thread', status, host, ancestors: [], descendants: [],
     loading: false, loaded: false, error: null, returnScroll: window.scrollY,
   });
   window.scrollTo(0, 0);
@@ -937,7 +939,7 @@ async function loadThread(t) {
   } finally {
     t.loading = false;
     busy(-1);
-    if (session && state.profiles.includes(t)) {
+    if (session && aberta(t)) {
       render();
       if (t.loaded && !t.scrolled) {
         t.scrolled = true;
@@ -1623,12 +1625,19 @@ function setHomeList(id) {
   else if (!state.home.items.length) loadList('home');
 }
 
+// O estado é um proxy: a entrada guardada não é o mesmo objeto que o chamador tem, então compara-se pelo uid.
+const aberta = (e) => state.profiles.some((p) => p.uid === e.uid);
+
 function pushEntry(entry) {
+  entry.uid = crypto.randomUUID();
   entry.returnScroll = window.scrollY;
   state.profiles.push(entry);
   window.scrollTo(0, 0);
+  const viva = topEntry(); // o proxy do estado: de agora em diante mude ESTE objeto, não o original
   render();
-  if (entry.reload) entry.reload();
+  // adiado: quem chamou ainda vai trocar sua variável pelo proxy devolvido, e o reload deve mexer nele
+  if (viva.reload) queueMicrotask(() => viva.reload());
+  return viva;
 }
 
 function entryView(view, e) {
@@ -1685,9 +1694,9 @@ function listsManageView(view, e) {
 }
 
 function openAccountsEntry(title, path, undoVerb, undoLabel) {
-  const e = { type: 'accounts', title, path, undoVerb, undoLabel, items: [], next: null, more: false, loaded: false, loading: false, error: null };
+  let e = { type: 'accounts', title, path, undoVerb, undoLabel, items: [], next: null, more: false, loaded: false, loading: false, error: null };
   e.reload = () => loadAccountsEntry(e, false);
-  pushEntry(e);
+  e = pushEntry(e);
 }
 
 async function loadAccountsEntry(e, append) {
@@ -1707,7 +1716,7 @@ async function loadAccountsEntry(e, append) {
   } catch (err) { e.error = err.message; } finally {
     e.loading = false;
     if (!append) busy(-1);
-    if (session && state.profiles.includes(e)) render();
+    if (session && aberta(e)) render();
   }
 }
 
@@ -1731,9 +1740,9 @@ function accountsEntryView(view, e) {
 }
 
 function openMembers(list) {
-  const e = { type: 'members', list, items: [], loaded: false, loading: false, error: null, q: '', results: null };
+  let e = { type: 'members', list, items: [], loaded: false, loading: false, error: null, q: '', results: null };
   e.reload = () => loadMembers(e);
-  pushEntry(e);
+  e = pushEntry(e);
 }
 
 async function loadMembers(e) {
@@ -1750,7 +1759,7 @@ async function loadMembers(e) {
   } finally {
     e.loading = false;
     busy(-1);
-    if (session && state.profiles.includes(e)) render();
+    if (session && aberta(e)) render();
   }
 }
 
@@ -1787,7 +1796,7 @@ function membersView(view, e) {
 
 // Escolher em quais listas uma conta (que você segue) aparece
 function openListPicker(account) {
-  const e = { type: 'pick', account, member: new Set(), loaded: false, loading: false, error: null };
+  let e = { type: 'pick', account, member: new Set(), loaded: false, loading: false, error: null };
   e.reload = async () => {
     if (e.loading) return;
     e.loading = true; e.error = null; busy(+1); render();
@@ -1800,10 +1809,10 @@ function openListPicker(account) {
       e.loaded = true;
     } catch (err) { e.error = err.message; } finally {
       e.loading = false; busy(-1);
-      if (session && state.profiles.includes(e)) render();
+      if (session && aberta(e)) render();
     }
   };
-  pushEntry(e);
+  e = pushEntry(e);
 }
 
 function listPickView(view, e) {
@@ -1828,9 +1837,9 @@ const FILTER_EXP = [['', 'Nunca'], [86400, '1 dia'], [604800, '1 semana'], [2592
 const ctxLabel = (c) => (FILTER_CTX.find((x) => x[0] === c) || [c, c])[1];
 
 function openFilters() {
-  const e = { type: 'filters', items: [], loaded: false, loading: false, error: null, confirm: null };
+  let e = { type: 'filters', items: [], loaded: false, loading: false, error: null, confirm: null };
   e.reload = () => loadFilters(e);
-  pushEntry(e);
+  e = pushEntry(e);
   loadFilters(e);
 }
 
@@ -1841,7 +1850,7 @@ async function loadFilters(e) {
     e.loaded = true;
   } catch (err) { e.error = err.message; } finally {
     e.loading = false; busy(-1);
-    if (session && state.profiles.includes(e)) render();
+    if (session && aberta(e)) render();
   }
 }
 
@@ -1869,9 +1878,9 @@ async function timed(fn) {
 }
 
 function openHealth() {
-  const e = { type: 'health', checks: null, running: false, at: null };
+  let e = { type: 'health', checks: null, running: false, at: null };
   e.reload = () => runHealth(e);
-  pushEntry(e);
+  e = pushEntry(e);
   runHealth(e);
 }
 
@@ -1905,7 +1914,7 @@ async function runHealth(e) {
   e.checks = checks;
   e.at = new Date();
   e.running = false;
-  if (session && state.profiles.includes(e)) render();
+  if (session && aberta(e)) render();
 }
 
 function healthView(view, e) {
@@ -1914,9 +1923,9 @@ function healthView(view, e) {
 }
 
 function openScheduled() {
-  const e = { type: 'scheduled', items: [], loaded: false, error: null, confirm: null };
+  let e = { type: 'scheduled', items: [], loaded: false, error: null, confirm: null };
   e.reload = () => loadScheduled(e);
-  pushEntry(e);
+  e = pushEntry(e);
   loadScheduled(e);
 }
 
@@ -1927,7 +1936,7 @@ async function loadScheduled(e) {
     e.loaded = true;
   } catch (err) { e.error = err.message; } finally {
     busy(-1);
-    if (session && state.profiles.includes(e)) render();
+    if (session && aberta(e)) render();
   }
 }
 
@@ -1945,7 +1954,7 @@ function scheduledView(view, e) {
 }
 
 function openFilterEdit(parent, f) {
-  const e = { type: 'filteredit', parent, filter: f, built: false, saving: false, error: '',
+  let e = { type: 'filteredit', parent, filter: f, built: false, saving: false, error: '',
     form: {
       title: f ? f.title : '',
       words: f ? (f.keywords || []).map((k) => k.keyword).join('\n') : '',
@@ -1954,7 +1963,7 @@ function openFilterEdit(parent, f) {
       action: f && f.filter_action === 'hide' ? 'hide' : 'warn',
       exp: undefined, // undefined = manter o que já existe
     } };
-  pushEntry(e);
+  e = pushEntry(e);
 }
 
 function filterEditView(view, e) {
@@ -2002,10 +2011,10 @@ async function prepImage(file, w, h2) {
 }
 
 function openEditProfile() {
-  const e = { type: 'editprofile', loaded: false, loading: false, error: null, saving: false, dirty: false, built: false,
+  let e = { type: 'editprofile', loaded: false, loading: false, error: null, saving: false, dirty: false, built: false,
     form: null, avatarBlob: null, headerBlob: null, avatarUrl: null, headerUrl: null, maxFields: 4 };
   e.reload = null;
-  pushEntry(e);
+  e = pushEntry(e);
   loadEditProfile(e);
 }
 
@@ -2037,7 +2046,7 @@ async function loadEditProfile(e) {
   } finally {
     e.loading = false; busy(-1);
     e.built = false;
-    if (session && state.profiles.includes(e)) render();
+    if (session && aberta(e)) render();
   }
 }
 
@@ -2134,11 +2143,13 @@ function accountRow(a) {
 function openProfile(account) {
   const p = mkProfile(account);
   p.returnScroll = window.scrollY;
+  p.uid = crypto.randomUUID();
   state.profiles.push(p);
   window.scrollTo(0, 0);
   render();
-  loadProfile(p);
-  ensureProfileLoaded(p);
+  const viva = topEntry();
+  loadProfile(viva);
+  ensureProfileLoaded(viva);
 }
 
 // Contas vindas de outra instância têm ids que não valem na sua: resolvemos pelo endereço (usuário@instância).
