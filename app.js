@@ -795,8 +795,19 @@ function setNotifTab(id) {
   if (!state[k].items.length && !state[k].loading) loadList(k);
 }
 
+/* Padrão de abas do design system (o mesmo do Life OS): trilho em pílula, itens mono, aba atual no acento.
+   Só o trilho rola na horizontal, e a aba atual é trazida para o centro. */
+function segBar(extra, ...kids) {
+  const track = h('div', { class: 'tabs', role: 'tablist' }, ...kids);
+  requestAnimationFrame(() => {
+    const on = track.querySelector('.chip.active');
+    if (on) track.scrollLeft = on.offsetLeft - (track.clientWidth - on.clientWidth) / 2;
+  });
+  return h('div', { class: `seg-bar${extra ? ' ' + extra : ''}` }, track);
+}
+
 function notificationsView(view) {
-  view.append(h('div', { class: 'seg-bar', role: 'tablist' }, ...NOTIF_TABS.map(([id, label]) =>
+  view.append(segBar('', ...NOTIF_TABS.map(([id, label]) =>
     h('button', { type: 'button', role: 'tab', class: `chip${state.notifTab === id ? ' active' : ''}`, 'aria-selected': state.notifTab === id ? 'true' : 'false', onclick: () => setNotifTab(id) }, label))));
   if (state.notifTab === 'mentions') renderList(view, 'mentions', notifEl);
   else if (state.notifTab === 'dms') renderList(view, 'convs', convEl);
@@ -1613,7 +1624,7 @@ function homeView(view) {
     type: 'button', role: 'tab', class: `chip${(state.homeList || '') === id ? ' active' : ''}`,
     'aria-selected': (state.homeList || '') === id ? 'true' : 'false', onclick: () => setHomeList(id),
   }, label, extra);
-  view.append(h('div', { class: 'seg-bar', role: 'tablist' },
+  view.append(segBar('',
     chip('', 'Início'),
     ...L.items.map((l) => chip(l.id, l.title)),
     h('button', { type: 'button', class: 'chip with-icon', 'aria-label': 'Gerenciar listas', onclick: openListsManage }, svgIcon('settings', 16), 'Listas')));
@@ -2557,7 +2568,7 @@ function profileView(view, p) {
       h('a', { href: safeUrl(a.url), target: '_blank', rel: 'noopener noreferrer' }, 'abrir no navegador')),
     p.error ? h('p', { class: 'error' }, p.error) : null));
 
-  view.append(h('div', { class: 'seg-bar under', role: 'tablist' }, ...profileSegs(p).map(([id, label]) =>
+  view.append(segBar('under', ...profileSegs(p).map(([id, label]) =>
     h('button', { type: 'button', role: 'tab', class: `chip${p.seg === id ? ' active' : ''}`, 'aria-selected': p.seg === id ? 'true' : 'false', onclick: () => setProfileSeg(p, id) }, label))));
   if (a.locked && !self && !(p.rel && p.rel.following)) {
     view.append(h('p', { class: 'note muted small' }, 'Perfil fechado: siga a conta para ver as publicações.'));
@@ -2773,7 +2784,7 @@ function exploreView(view) {
     return;
   }
   if (state.search.active) { searchView(view); return; }
-  view.append(h('div', { class: 'seg-bar', role: 'tablist' }, ...SEGMENTS.map(([id, label]) =>
+  view.append(segBar('', ...SEGMENTS.map(([id, label]) =>
     h('button', { type: 'button', role: 'tab', class: `chip${ex.seg === id ? ' active' : ''}`, 'aria-selected': ex.seg === id ? 'true' : 'false', onclick: () => setSeg(id) }, label))));
   if (ex.seg === 'trends') trendsView(view);
   else if (ex.seg === 'tags') tagsView(view);

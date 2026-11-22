@@ -346,16 +346,21 @@ dialog#composer::backdrop { background: rgb(0 0 0 / .55); }
 /* ---------- Explorar ---------- */
 .seg-bar {
   position: sticky; top: var(--sat); z-index: 5;
-  display: flex; gap: 8px;
-  padding: 20px 12px 8px; /* folga sob a barra de status do iOS */
-  overflow-x: auto;
-  scrollbar-width: none;
+  padding: 20px 16px 8px; /* folga sob a barra de status do iOS */
   background: color-mix(in srgb, var(--bg) 92%, transparent);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
   border-bottom: 1px solid var(--border);
 }
-.seg-bar::-webkit-scrollbar { display: none; }
+/* padrão de abas: trilho em pílula (44 px), itens de 36 px, aba atual no acento */
+.seg-bar .tabs {
+  display: flex; gap: 4px; padding: 4px; max-width: 100%; width: max-content;
+  border: 1px solid var(--border); border-radius: var(--radius-pill);
+  overflow-x: auto; scrollbar-width: none; overscroll-behavior-x: contain;
+}
+.seg-bar .tabs::-webkit-scrollbar { display: none; }
+.seg-bar .tabs .chip { min-height: 36px; padding: 0 16px; border: 0; background: transparent; font-size: 13px; font-weight: 700; color: var(--muted); }
+.seg-bar .tabs .chip.active { background: var(--accent); color: var(--accent-ink); }
 .chip { flex: none; white-space: nowrap; border-radius: 999px; padding: 6px 14px; font-size: 14px; }
 .chip.active { background: var(--accent); color: var(--accent-ink); border-color: transparent; font-weight: 600; }
 
