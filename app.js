@@ -6,7 +6,9 @@ import 'rochedo';
 import './style.css';
 import { estado, reiniciar } from './src/estado.svelte.js';
 import { registrar, canon, atualizar, esquecer, limpar as limparPublicacoes } from './src/publicacoes.svelte.js';
-import { desmontarIlhas, ilha } from './src/ilhas.js';
+import { desmontarIlhas, ilha, montar } from './src/ilhas.js';
+import Publicacao from './src/telas/Publicacao.svelte';
+import { SvelteMap } from 'svelte/reactivity';
 import Saude from './src/telas/Saude.svelte';
 import Filtros from './src/telas/Filtros.svelte';
 import HashtagsSeguidas from './src/telas/HashtagsSeguidas.svelte';
@@ -335,45 +337,20 @@ function nameNode(account) {
   return h('span', {}, emojiFragment(account.display_name || account.username, account.emojis));
 }
 
-function paintAction(btn, icon, count, on) {
-  if (!btn.dataset.label) btn.dataset.label = btn.getAttribute('aria-label') || '';
-  if (btn.dataset.label) btn.setAttribute('aria-label', count ? `${btn.dataset.label}, ${count}` : btn.dataset.label);
-  btn.replaceChildren(svgIcon(icon, 20), h('span', { class: 'count' }, count ? String(count) : ''));
-  btn.classList.toggle('on', !!on);
-  btn.setAttribute('aria-pressed', on ? 'true' : 'false');
-}
-
-function actionButton(cls, icon, count, on, onclick, label) {
-  const b = h('button', { type: 'button', class: cls, 'aria-label': label, onclick });
-  paintAction(b, icon, count, on);
-  return b;
-}
-
 function hydrateIcons(root = document) {
   root.querySelectorAll('[data-icon]').forEach((el) => {
     el.replaceChildren(svgIcon(el.dataset.icon, Number(el.dataset.size) || 24));
   });
 }
 
+// A resposta da API já atualiza a publicação canônica; a tela reage sozinha.
 async function toggle(btn, sh, kind, visibility) {
   const isBoost = kind === 'boost';
   const was = isBoost ? sh.reblogged : sh.favourited;
   const verb = isBoost ? (was ? 'unreblog' : 'reblog') : (was ? 'unfavourite' : 'favourite');
   btn.disabled = true;
   try {
-    const r = await api(`/api/v1/statuses/${sh.id}/${verb}`, { method: 'POST', body: verb === 'reblog' && visibility ? { visibility } : undefined });
-    const u = r.reblog || r; // reblog devolve o "invólucro"; o original vem em .reblog
-    if (isBoost) {
-      sh.reblogged = u.reblogged;
-      sh.reblogs_count = u.reblogs_count;
-      paintAction(btn, 'boost', sh.reblogs_count, sh.reblogged);
-    } else {
-      sh.favourited = u.favourited;
-      sh.favourites_count = u.favourites_count;
-      paintAction(btn, 'fav', sh.favourites_count, sh.favourited);
-    }
-    btn.classList.add('pulse');
-    setTimeout(() => btn.classList.remove('pulse'), 600);
+    await api(`/api/v1/statuses/${sh.id}/${verb}`, { method: 'POST', body: verb === 'reblog' && visibility ? { visibility } : undefined });
   } catch (e) {
     toast(e.message);
   } finally {
@@ -397,11 +374,7 @@ async function toggleBookmark(btn, sh) {
   btn.disabled = true;
   try {
     const r = await api(`/api/v1/statuses/${sh.id}/${was ? 'unbookmark' : 'bookmark'}`, { method: 'POST' });
-    sh.bookmarked = (r.reblog || r).bookmarked;
-    paintAction(btn, 'bookmark', 0, sh.bookmarked);
-    btn.classList.add('pulse');
-    setTimeout(() => btn.classList.remove('pulse'), 600);
-    toast(sh.bookmarked ? 'Salvo' : 'Removido dos salvos');
+    toast((r.reblog || r).bookmarked ? 'Salvo' : 'Removido dos salvos');
   } catch (e) {
     toast(e.message);
   } finally {
@@ -526,13 +499,10 @@ async function accountMenu(account, rel) {
   openSheet(`@${account.acct}`, moderationItems(account, rel, null));
 }
 
-async function translateStatus(sh, btn) {
-  btn.disabled = true; btn.textContent = 'Traduzindo…';
-  try {
-    const r = await api(`/api/v1/statuses/${sh.id}/translate`, { method: 'POST', body: { lang: (navigator.language || 'pt').slice(0, 2) } });
-    translations.set(sh.id, { content: r.content, lang: r.detected_source_language, provider: r.provider, shown: true });
-    replaceStatus(sh);
-  } catch (e) { toast(e.message); btn.disabled = false; btn.textContent = `Traduzir do ${sh.language.toUpperCase()}`; }
+// Lança Error(mensagem) se a instância recusar; a publicação mostra o estado "Traduzindo…" sozinha.
+async function translateStatus(sh) {
+  const r = await api(`/api/v1/statuses/${sh.id}/translate`, { method: 'POST', body: { lang: (navigator.language || 'pt').slice(0, 2) } });
+  translations.set(sh.id, { content: r.content, lang: r.detected_source_language, provider: r.provider, shown: true });
 }
 
 async function openHistory(sh) {
@@ -645,7 +615,7 @@ function mediaEl(sh) {
 
 // Filtros do servidor: publicações que casam com um filtro viram um aviso recolhido
 const revealed = new Set();
-const translations = new Map(); // id da publicação -> { content, lang, provider, shown }
+const translations = new SvelteMap(); // id da publicação -> { content, lang, provider, shown }
 function filterHits(s) {
   const sh = s.reblog || s;
   const list = (s.filtered && s.filtered.length ? s.filtered : sh.filtered) || [];
@@ -664,85 +634,18 @@ function quoteEl(q, host) {
     qs.spoiler_text ? h('p', { class: 'muted small' }, qs.spoiler_text) : h('div', { class: 'quote-body' }, sanitizeHtml(qs.content, qs.emojis)));
 }
 
-function statusEl(s, { readonly = false, host = null } = {}) {
-  if (!host) s = canon(s); // versão mais recente (curtidas, edições) vinda de qualquer tela
-  const sh = s.reblog || s;
-  const hits = revealed.has(sh.id) ? [] : filterHits(s);
-  if (hits.length) {
-    const names = [...new Set(hits.map((f) => f.title))].join(', ');
-    const ph = h('article', { class: 'status filtered', 'data-id': sh.id },
-      h('span', { class: 'muted' }, `Filtrado: ${names}`),
-      h('button', { type: 'button', class: 'link', onclick: () => { revealed.add(sh.id); ph.replaceWith(statusEl(s, { readonly, host })); } }, 'Mostrar'));
-    return ph;
-  }
-  const a = sh.account;
-  const el = h('article', { class: 'status', 'data-id': sh.id });
-  el._status = sh;
-  el._host = host;
+// Publicação (Svelte): tudo o que a tela precisa e ainda vive em JS passa por este objeto.
+let publicacaoCtx = null;
+const mkPublicacaoCtx = () => ({
+  canon, revealed, translations, filterHits, sanitizeHtml, plainText, mediaEl, pollEl, cardEl, quoteEl, nameNode, emojiFragment, safeUrl, timeAgo,
+  openAccountFrom, openHistory, openComposer, boostSheet, toggle, toggleBookmark, statusMenu, translateStatus, toast,
+  limits: () => limits, prefs: () => prefs,
+  abrirRespondida: async (sh) => { try { openThread(await api(`/api/v1/statuses/${sh.in_reply_to_id}`)); } catch (err) { toast(err.message); } },
+});
 
-  if (s.reblog) {
-    el.append(h('div', { class: 'boost-note' }, svgIcon('boost', 14), ' ', h('span', { class: 'link-name', role: 'button', tabindex: '0', onclick: () => openAccountFrom(s.account, host) }, nameNode(s.account)), ' impulsionou'));
-  }
-
-  if (sh.in_reply_to_id && !host) {
-    const to = (sh.mentions || []).find((m) => m.id === sh.in_reply_to_account_id);
-    el.append(h('div', { class: 'reply-note muted small', role: 'button', tabindex: '0', onclick: async (e) => {
-      e.stopPropagation();
-      try { openThread(await api(`/api/v1/statuses/${sh.in_reply_to_id}`)); } catch (err) { toast(err.message); }
-    } }, svgIcon('reply', 14), ` Em resposta a ${to ? '@' + to.acct : 'uma publicação'}`));
-  }
-  el.append(h('header', {},
-    h('div', { class: 'who-link', role: 'button', tabindex: '0', 'aria-label': `Abrir perfil de ${a.acct}`, onclick: () => openAccountFrom(a, host) },
-      h('img', { class: 'ro-avatar avatar', src: safeUrl(a.avatar_static || a.avatar), alt: '', loading: 'lazy' }),
-      h('div', { class: 'who' },
-        h('div', { class: 'name' }, nameNode(a)),
-        h('span', { class: 'acct' }, '@' + a.acct))),
-    h('div', { class: 'when' },
-      h('time', { datetime: sh.created_at, title: new Date(sh.created_at).toLocaleString('pt-BR') }, timeAgo(sh.created_at)),
-      sh.edited_at && !host ? h('button', { type: 'button', class: 'edited', onclick: () => openHistory(sh) }, 'editado') : null),
-  ));
-
-  const body = h('div', { class: 'body' });
-  const tr = translations.get(sh.id);
-  body.append(sanitizeHtml(tr && tr.shown ? tr.content : sh.content, sh.emojis));
-  const parts = [body];
-  if (plainText(sh.content).length > 600 || (sh.content.match(/<br|<\/p>/g) || []).length > 10) {
-    body.classList.add('clamp');
-    parts.push(h('button', { type: 'button', class: 'link more-text', onclick: (e) => {
-      const on = body.classList.toggle('clamp');
-      e.currentTarget.textContent = on ? 'Mostrar mais' : 'Mostrar menos';
-    } }, 'Mostrar mais'));
-  }
-  const myLang = (navigator.language || 'pt').slice(0, 2);
-  if (!readonly && !host && limits.translation && sh.language && sh.language !== myLang && sh.content) {
-    parts.push(tr
-      ? h('div', { class: 'tr-note muted small' }, `Traduzido de ${tr.lang ? tr.lang.toUpperCase() : sh.language.toUpperCase()}${tr.provider ? ` por ${tr.provider}` : ''} · `,
-        h('button', { type: 'button', class: 'link', onclick: () => { tr.shown = !tr.shown; replaceStatus(sh); } }, tr.shown ? 'Ver original' : 'Ver tradução'))
-      : h('button', { type: 'button', class: 'link tr-btn', onclick: (e) => translateStatus(sh, e.currentTarget) }, `Traduzir do ${sh.language.toUpperCase()}`));
-  }
-  const media = mediaEl(sh);
-  if (media) parts.push(media);
-  if (sh.poll) parts.push(pollEl(sh, { readonly: readonly || !!host }));
-  else if (!media && sh.card && !sh.quote) { const cd = cardEl(sh.card); if (cd) parts.push(cd); }
-  if (sh.quote && !readonly) { const qe = quoteEl(sh.quote, host); if (qe) parts.push(qe); }
-
-  if (sh.spoiler_text) {
-    const summary = h('summary', {}, emojiFragment(sh.spoiler_text, sh.emojis));
-    el.append(h('details', { class: 'cw', open: prefs.openCw || null }, summary, ...parts));
-  } else {
-    el.append(...parts);
-  }
-
-  const canBoost = sh.visibility === 'public' || sh.visibility === 'unlisted';
-  const boostBtn = actionButton('boost', 'boost', sh.reblogs_count, sh.reblogged, (e) => (sh.reblogged ? toggle(e.currentTarget, sh, 'boost') : boostSheet(e.currentTarget, sh)), 'Impulsionar');
-  if (!canBoost) boostBtn.disabled = true;
-  const favBtn = actionButton('fav', 'fav', sh.favourites_count, sh.favourited, (e) => toggle(e.currentTarget, sh, 'fav'), 'Favoritar');
-  const replyBtn = actionButton('reply', 'reply', sh.replies_count, false, () => openComposer({ replyTo: sh }), 'Responder');
-  const open = h('a', { class: 'open', href: safeUrl(sh.url || sh.uri), target: '_blank', rel: 'noopener noreferrer', 'aria-label': 'Abrir original' }, svgIcon('external', 18));
-  const markBtn = actionButton('bookmark', 'bookmark', 0, sh.bookmarked, (e) => toggleBookmark(e.currentTarget, sh), 'Salvar');
-  const moreBtn = h('button', { type: 'button', class: 'more-btn', 'aria-label': 'Mais opções', onclick: () => statusMenu(sh) }, svgIcon('more', 20));
-  el.append(h('div', { class: 'actions' }, ...(readonly ? [open] : [replyBtn, boostBtn, favBtn, markBtn, moreBtn])));
-  return el;
+function statusEl(s, { readonly = false, host = null, focal = false } = {}) {
+  publicacaoCtx ||= mkPublicacaoCtx(); // criado no primeiro uso: alguns auxiliares são `const` definidos mais abaixo
+  return montar(Publicacao, { s, readonly, host, focal, c: publicacaoCtx });
 }
 
 const NOTIF_KINDS = {
@@ -957,13 +860,7 @@ function threadView(view, t) {
   view.append(profileBar('Conversa', closeProfile));
   const opts = { readonly: !!t.host, host: t.host };
   const item = (cls, s, depth = 0) => {
-    const el = statusEl(s, opts);
-    const box = h('div', { class: `thread-item ${cls}`, style: `--d:${Math.min(depth, 5)}` }, el);
-    if (cls === 'focal') {
-      el.classList.add('focal');
-      el.insertBefore(h('p', { class: 'muted small focal-date' }, new Date(s.created_at).toLocaleString('pt-BR', { dateStyle: 'long', timeStyle: 'short' })), el.querySelector('.actions'));
-    }
-    return box;
+    return h('div', { class: `thread-item ${cls}`, style: `--d:${Math.min(depth, 5)}` }, statusEl(s, { ...opts, focal: cls === 'focal' }));
   };
   t.ancestors.forEach((s) => view.append(item('ancestor', s)));
   view.append(item('focal', t.status));
