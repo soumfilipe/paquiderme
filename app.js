@@ -9,6 +9,10 @@ import { registrar, canon, atualizar, esquecer, limpar as limparPublicacoes } fr
 import { desmontarIlhas, ilha, montar, reativas } from './src/ilhas.js';
 import LinhaDoTempo from './src/telas/LinhaDoTempo.svelte';
 import Avisos from './src/telas/Avisos.svelte';
+import BarraAbas from './src/telas/BarraAbas.svelte';
+import ListaContas from './src/telas/ListaContas.svelte';
+import EmAlta from './src/telas/EmAlta.svelte';
+import Resultados from './src/telas/Resultados.svelte';
 import Publicacao from './src/telas/Publicacao.svelte';
 import { SvelteMap } from 'svelte/reactivity';
 import { compose as composeEstado, limites, ui as composeUi, reiniciarCompose } from './src/composicao.svelte.js';
@@ -664,25 +668,13 @@ function setNotifTab(id) {
   if (!state[k].items.length && !state[k].loading) loadList(k);
 }
 
-/* Padrão de abas do design system (o mesmo do Life OS): trilho em pílula, itens mono, aba atual no acento.
-   Só o trilho rola na horizontal, e a aba atual é trazida para o centro. */
-function segBar(extra, ...kids) {
-  const track = h('div', { class: 'tabs ro-abas', role: 'tablist' }, ...kids);
-  requestAnimationFrame(() => {
-    const on = track.querySelector('[aria-selected="true"], .ativa');
-    if (on) track.scrollLeft = on.offsetLeft - (track.clientWidth - on.clientWidth) / 2;
-  });
-  return h('div', { class: `seg-bar${extra ? ' ' + extra : ''}` }, track);
-}
-
 function notificationsView(view) {
-  view.append(segBar('', ...NOTIF_TABS.map(([id, label]) =>
-    h('button', { type: 'button', role: 'tab', 'aria-selected': state.notifTab === id ? 'true' : 'false', onclick: () => setNotifTab(id) }, label))));
+  ilha(view, BarraAbas, { itens: NOTIF_TABS.map(([id, rotulo]) => ({ id, rotulo })), valor: state.notifTab, aoMudar: setNotifTab, nome: 'Avisos' });
   const kind = state.notifTab === 'mentions' ? 'mentions' : state.notifTab === 'dms' ? 'convs' : 'notifications';
   publicacaoCtx ||= mkPublicacaoCtx();
   reativas.set(kind, getList(kind));
   ilha(view, Avisos, {
-    tipo: kind, st: getList(kind), c: { ...publicacaoCtx, api, openProfile, openThread },
+    tipo: kind, st: getList(kind), c: ctxLista(),
     aoMais: () => loadList(kind, true),
     aoTentar: () => loadList(kind, getList(kind).items.length > 0),
   });
@@ -690,18 +682,13 @@ function notificationsView(view) {
 
 const plainText = (html) => { const d = new DOMParser().parseFromString(html || '', 'text/html').body; d.querySelectorAll('br').forEach((b) => b.replaceWith(' ')); return (d.textContent || '').replace(/\s+/g, ' ').trim(); };
 
-function moreButton(kind) {
-  const st = getList(kind);
-  if (st.loading) return loadingState('Carregando…');
-  if (st.error) {
-    return errorState(st.error, () => loadList(kind, st.items.length > 0));
-  }
-  if (!st.items.length) return emptyState('Nada por aqui ainda.');
-  if (!st.more) return h('p', { class: 'empty' }, 'Fim.');
-  return h('button', { type: 'button', class: 'ro-botao more', onclick: () => loadList(kind, true) }, 'Carregar mais');
+// Lista de publicações em Svelte: reage sozinha a carregamentos e novas publicações (sem render() global).
+// Tudo o que as telas de lista precisam do app (publicação + contas, hashtags e abertura de telas)
+function ctxLista() {
+  publicacaoCtx ||= mkPublicacaoCtx();
+  return { ...publicacaoCtx, api, openProfile, openThread, openTag, sparkline };
 }
 
-// Lista de publicações em Svelte: reage sozinha a carregamentos e novas publicações (sem render() global).
 function timelineView(view, kind, { readonly = false, host = null, ocultar = null } = {}) {
   publicacaoCtx ||= mkPublicacaoCtx();
   reativas.set(kind, getList(kind));
@@ -1405,14 +1392,11 @@ function scheduleQuickHealth(ms = 1500) { clearTimeout(alarm.timer); alarm.timer
 function homeView(view) {
   const L = state.lists;
   if (alarm.text) view.append(h('div', { class: 'alarm', role: 'status' }, h('span', {}, alarm.text), h('button', { type: 'button', class: 'link', onclick: openHealth }, 'Ver status')));
-  const chip = (id, label, extra) => h('button', {
-    type: 'button', role: 'tab', 
-    'aria-selected': (state.homeList || '') === id ? 'true' : 'false', onclick: () => setHomeList(id),
-  }, label, extra);
-  view.append(segBar('',
-    chip('', 'Início'),
-    ...L.items.map((l) => chip(l.id, l.title)),
-    h('button', { type: 'button', class: 'with-icon', 'aria-label': 'Gerenciar listas', onclick: openListsManage }, svgIcon('settings', 16), 'Listas')));
+  ilha(view, BarraAbas, {
+    itens: [{ id: '', rotulo: 'Início' }, ...L.items.map((l) => ({ id: l.id, rotulo: l.title }))],
+    valor: state.homeList || '', aoMudar: setHomeList, nome: 'Início e listas',
+    acao: { rotulo: 'Listas', icone: 'settings', aria: 'Gerenciar listas', aoClicar: openListsManage },
+  });
   timelineView(view, state.homeList ? 'list' : 'home');
 }
 
@@ -1932,14 +1916,6 @@ function activeProfile() {
 
 const fullAcct = (a) => (a.acct.includes('@') ? a.acct : `${a.acct}@${session.host}`);
 
-function accountRow(a) {
-  return h('div', { class: 'ro-linha account-row', role: 'button', tabindex: '0', onclick: () => openProfile(a) },
-    h('span', { class: 'ro-linha__inicio' }, h('img', { class: 'ro-avatar avatar', src: safeUrl(a.avatar_static || a.avatar), alt: '', loading: 'lazy' })),
-    h('span', { class: 'ro-linha__corpo who' },
-      h('span', { class: 'ro-linha__titulo name' }, nameNode(a)),
-      h('span', { class: 'ro-linha__sub acct' }, '@' + a.acct)));
-}
-
 function openProfile(account) {
   const p = mkProfile(account);
   p.returnScroll = window.scrollY;
@@ -2116,7 +2092,9 @@ function profileView(view, p) {
 
   if (p.people) {
     view.append(profileBar(p.people === 'followers' ? 'Seguidores' : 'Seguindo', () => closePeople(p)));
-    renderList(view, 'p:' + p.people, accountRow);
+    reativas.set('p:' + p.people, getList('p:' + p.people));
+    ilha(view, ListaContas, { st: getList('p:' + p.people), c: ctxLista(),
+      aoMais: () => loadList('p:' + p.people, true), aoTentar: () => loadList('p:' + p.people, getList('p:' + p.people).items.length > 0) });
     return;
   }
 
@@ -2136,8 +2114,7 @@ function profileView(view, p) {
     abrirPerfil: openProfile, abrirTag: openTag, abrirGente: (tipo) => openPeople(p, tipo),
   } });
 
-  view.append(segBar('under', ...profileSegs(p).map(([id, label]) =>
-    h('button', { type: 'button', role: 'tab', 'aria-selected': p.seg === id ? 'true' : 'false', onclick: () => setProfileSeg(p, id) }, label))));
+  ilha(view, BarraAbas, { itens: profileSegs(p).map(([id, rotulo]) => ({ id, rotulo })), valor: p.seg, aoMudar: (id) => setProfileSeg(p, id), sob: true, nome: 'Perfil' });
   if (a.locked && !self && !(p.rel && p.rel.following)) {
     view.append(h('p', { class: 'note muted small' }, 'Perfil fechado: siga a conta para ver as publicações.'));
   }
@@ -2169,56 +2146,13 @@ function getList(kind) {
   return state[kind];
 }
 
-function renderList(view, kind, make, group) {
-  const st = getList(kind);
-  if (st.cached) {
-    const when = st.cachedAt ? new Date(st.cachedAt).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : '';
-    view.append(h('p', { class: 'cache-note', role: 'status' },
-      st.error ? `Sem conexão. Mostrando o que foi guardado em ${when}.` : `Mostrando o que foi guardado em ${when}. Atualizando…`));
-  }
-  (group ? group(st.items) : st.items).forEach((i) => { const n = make(i); if (n) view.append(n); });
-  view.append(moreButton(kind));
-}
-
-function tagRow(tag) {
-  const hist = tag.history || [];
-  const two = hist.slice(0, 2);
-  const people = two.reduce((n, d) => n + Number(d.accounts || 0), 0);
-  const uses = two.reduce((n, d) => n + Number(d.uses || 0), 0);
-  return h('button', { type: 'button', class: 'ro-linha tag-row', onclick: () => openTag(tag.name) },
-    h('span', { class: 'ro-linha__corpo' },
-      h('span', { class: 'ro-linha__titulo' }, '#' + tag.name),
-      h('span', { class: 'ro-linha__sub' }, `${people} pessoas · ${uses} publicações nos últimos 2 dias`)),
-    h('span', { class: 'ro-linha__fim' }, sparkline(hist.slice(0, 7).map((d) => Number(d.uses || 0)).reverse())));
-}
-
 function trendsView(view) {
   const t = state.trends;
-  if (t.error) {
-    view.append(errorState(t.error, loadTrends));
-    return;
-  }
-  if (t.loading && !t.loaded) { view.append(loadingState('Carregando…')); return; }
-  t.notices.forEach((n) => view.append(h('div', { class: 'notice' },
-    h('div', { class: 'notice-body' }, sanitizeHtml(n.content, n.emojis)),
-    h('button', { type: 'button', class: 'link', onclick: async () => {
-      try { await api(`/api/v1/announcements/${n.id}/dismiss`, { method: 'POST' }); t.notices = t.notices.filter((x) => x.id !== n.id); render(); } catch (e) { toast(e.message); }
-    } }, 'Dispensar'))));
-  if (t.people.length) {
-    view.append(h('h3', { class: 'ro-rotulo section' }, 'Sugestões de contas'));
-    t.people.forEach((p) => { if (p.account) view.append(accountRow(p.account)); });
-  }
-  if (t.links.length) {
-    view.append(h('h3', { class: 'ro-rotulo section' }, 'Links em alta'));
-    t.links.forEach((l) => { const c = cardEl(l); if (c) view.append(h('div', { class: 'trend-link' }, c)); });
-  }
-  view.append(h('h3', { class: 'ro-rotulo section' }, 'Hashtags em alta'));
-  if (!t.tags.length) view.append(emptyState('Nenhuma hashtag em alta agora.'));
-  t.tags.forEach((tag) => view.append(tagRow(tag)));
-  if (t.statuses.length) {
-    view.append(h('h3', { class: 'ro-rotulo section' }, 'Publicações em alta'));
-    t.statuses.forEach((st) => view.append(statusEl(st)));
-  }
+  reativas.set('trends', t);
+  ilha(view, EmAlta, { t, c: ctxLista(), aoTentar: loadTrends,
+    aoDispensar: async (n) => {
+      try { await api(`/api/v1/announcements/${n.id}/dismiss`, { method: 'POST' }); t.notices = t.notices.filter((x) => x.id !== n.id); } catch (e) { toast(e.message); }
+    } });
 }
 
 function otherView(view) {
@@ -2236,7 +2170,7 @@ async function runSearch(append = false) {
   if (!s.q || s.loading) return;
   s.loading = true; s.error = null;
   if (!append) busy(+1);
-  render();
+  if (reativas.get('search') !== s) render();
   try {
     const params = { q: s.q, resolve: 'true', limit: s.type ? 20 : 5 };
     if (s.type) params.type = s.type;
@@ -2254,7 +2188,7 @@ async function runSearch(append = false) {
   } finally {
     s.loading = false;
     if (!append) busy(-1);
-    if (session) render();
+    if (session && reativas.get('search') !== s) render();
   }
 }
 
@@ -2306,24 +2240,8 @@ function bindDock() {
 function searchView(view) {
   const s = state.search;
   ilha(view, BuscaTipos, { tipos: SEARCH_TYPES, atual: s.type, aoEscolher: (id) => { s.type = id; s.res = null; if (s.q) runSearch(); else render(); } });
-  if (s.error) { view.append(errorState(s.error, () => runSearch())); return; }
-  if (s.loading && !s.res) { view.append(emptyState('Buscando…')); return; }
-  if (!s.res) return;
-  const { accounts, hashtags, statuses } = s.res;
-  if (!accounts.length && !hashtags.length && !statuses.length) { view.append(emptyState('Nada encontrado.')); return; }
-  if (accounts.length) {
-    if (!s.type) view.append(h('h3', { class: 'ro-rotulo section' }, 'Contas'));
-    accounts.forEach((a) => view.append(accountRow(a)));
-  }
-  if (hashtags.length) {
-    if (!s.type) view.append(h('h3', { class: 'ro-rotulo section' }, 'Hashtags'));
-    hashtags.forEach((t) => view.append(tagRow(t)));
-  }
-  if (statuses.length) {
-    if (!s.type) view.append(h('h3', { class: 'ro-rotulo section' }, 'Publicações'));
-    statuses.forEach((st) => view.append(statusEl(st)));
-  }
-  if (s.type && s.more) view.append(h('button', { type: 'button', class: 'ro-botao more', onclick: () => runSearch(true) }, s.loading ? 'Carregando…' : 'Carregar mais'));
+  reativas.set('search', s);
+  ilha(view, Resultados, { s, c: ctxLista(), aoMais: () => runSearch(true), aoTentar: () => runSearch() });
 }
 
 function exploreView(view) {
@@ -2337,8 +2255,7 @@ function exploreView(view) {
     return;
   }
   if (state.search.active) { searchView(view); return; }
-  view.append(segBar('', ...SEGMENTS.map(([id, label]) =>
-    h('button', { type: 'button', role: 'tab', 'aria-selected': ex.seg === id ? 'true' : 'false', onclick: () => setSeg(id) }, label))));
+  ilha(view, BarraAbas, { itens: SEGMENTS.map(([id, rotulo]) => ({ id, rotulo })), valor: ex.seg, aoMudar: setSeg, nome: 'Explorar' });
   if (ex.seg === 'trends') trendsView(view);
   else if (ex.seg === 'tags') tagsView(view);
   else if (ex.seg === 'other') otherView(view);
@@ -2526,7 +2443,7 @@ async function loadTrends() {
   t.loading = true;
   t.error = null;
   busy(+1);
-  render();
+  if (reativas.get('trends') !== t) render();
   try {
     const [tags, statuses, links, people, notices] = await Promise.all([
       api('/api/v1/trends/tags', { params: { limit: 20 } }),
@@ -2546,7 +2463,7 @@ async function loadTrends() {
   } finally {
     t.loading = false;
     busy(-1);
-    if (session) render();
+    if (session && reativas.get('trends') !== t) render();
   }
 }
 
