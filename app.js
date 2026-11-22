@@ -8,6 +8,7 @@ import { desmontarIlhas, ilha } from './src/ilhas.js';
 import Saude from './src/telas/Saude.svelte';
 import Filtros from './src/telas/Filtros.svelte';
 import Agendadas from './src/telas/Agendadas.svelte';
+import Perfil from './src/telas/Perfil.svelte';
 import AvisoAtualizacao from './src/telas/AvisoAtualizacao.svelte';
 import { iniciarAtualizacao } from './src/atualizacao.svelte.js';
 import { mount } from 'svelte';
@@ -2447,47 +2448,12 @@ function profileView(view, p) {
     : null;
   view.append(profileBar(nameNode(a), isRoot ? null : closeProfile, gear));
 
-  const hdr = safeUrl(a.header_static || a.header);
-  view.append(hdr && !/missing\.png/.test(hdr) ? h('img', { class: 'banner', src: hdr, alt: '' }) : h('div', { class: 'banner' }));
-
-  const actions = self
-    ? h('button', { class: 'ro-botao', type: 'button', onclick: openEditProfile }, 'Editar')
-    : h('div', { class: 'profile-actions' },
-      p.rel && p.rel.following ? h('button', { class: 'ro-botao', type: 'button', onclick: () => openListPicker(a) }, 'Listas') : null,
-      followBtn(p),
-      h('button', { type: 'button', class: 'ro-botao ro-botao--quieto ro-botao--icone icon-btn', 'aria-label': 'Mais opções da conta', onclick: () => accountMenu(a, p.rel) }, svgIcon('more', 22)));
-
-  const badges = [];
-  if (a.bot) badges.push(['Robô', 'bot']);
-  if (a.group) badges.push(['Grupo']);
-  if (a.locked) badges.push(['Perfil fechado', 'lock']);
-  if (p.rel && p.rel.followed_by) badges.push(['Segue você']);
-  if (p.rel && p.rel.muting) badges.push(['Silenciado']);
-  if (p.rel && p.rel.blocked_by) badges.push(['Bloqueou você']);
-
-  const fields = (a.fields || []).filter((f) => f.name || f.value).map((f) => h('div', { class: 'field' },
-    h('dt', {}, emojiFragment(f.name || '', a.emojis)),
-    h('dd', { class: f.verified_at ? 'verified' : '' }, sanitizeHtml(f.value, a.emojis), f.verified_at ? svgIcon('check', 16) : null)));
-
-  view.append(h('section', { class: 'profile-head' },
-    h('div', { class: 'profile-top' },
-      h('img', { class: 'profile-avatar', src: safeUrl(a.avatar_static || a.avatar), alt: '' }),
-      actions),
-    h('h2', { class: 'profile-name' }, nameNode(a)),
-    h('div', { class: 'handle' }, '@' + fullAcct(a)),
-    badges.length ? h('div', { class: 'badges' }, ...badges.map(([label, icon]) => h('span', { class: 'badge' }, icon ? svgIcon(icon, 13) : null, label))) : null,
-    a.moved ? h('p', { class: 'muted small' }, 'Mudou para ', h('span', { class: 'link-name', role: 'button', tabindex: '0', onclick: () => openProfile(a.moved) }, '@' + a.moved.acct)) : null,
-    a.note ? h('div', { class: 'bio' }, sanitizeHtml(a.note, a.emojis)) : null,
-    p.featured && p.featured.length ? h('div', { class: 'featured-tags' }, ...p.featured.map((t) => h('button', { type: 'button', class: 'chip ro-chip', onclick: () => openTag(t.name) }, `#${t.name}`, t.statuses_count ? h('span', { class: 'muted small' }, ` ${t.statuses_count}`) : null))) : null,
-    fields.length ? h('dl', { class: 'fields' }, ...fields) : null,
-    h('div', { class: 'counts' },
-      h('span', {}, h('strong', {}, fmtCount(a.statuses_count)), ' publicações'),
-      h('button', { type: 'button', class: 'count-btn', onclick: () => openPeople(p, 'following') }, h('strong', {}, fmtCount(a.following_count)), ' seguindo'),
-      h('button', { type: 'button', class: 'count-btn', onclick: () => openPeople(p, 'followers') }, h('strong', {}, fmtCount(a.followers_count)), ' seguidores')),
-    h('p', { class: 'muted small' },
-      a.created_at ? `Entrou em ${new Date(a.created_at).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })} · ` : '',
-      h('a', { href: safeUrl(a.url), target: '_blank', rel: 'noopener noreferrer' }, 'abrir no navegador')),
-    p.error ? h('p', { class: 'error' }, p.error) : null));
+  ilha(view, Perfil, { c: {
+    p, self, seguirNo: () => followBtn(p), url: safeUrl, nomeNo: nameNode, html: sanitizeHtml, emoji: emojiFragment,
+    contar: fmtCount, arroba: fullAcct,
+    editar: openEditProfile, listas: () => openListPicker(a), menu: () => accountMenu(a, p.rel),
+    abrirPerfil: openProfile, abrirTag: openTag, abrirGente: (tipo) => openPeople(p, tipo),
+  } });
 
   view.append(segBar('under', ...profileSegs(p).map(([id, label]) =>
     h('button', { type: 'button', role: 'tab', 'aria-selected': p.seg === id ? 'true' : 'false', onclick: () => setProfileSeg(p, id) }, label))));
