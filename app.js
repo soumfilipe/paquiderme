@@ -1358,7 +1358,7 @@ function prefChoice(label, key, options) {
   return h('div', { class: 'pref-group', role: 'group', 'aria-label': label },
     h('span', { class: 'muted small' }, label),
     h('div', { class: 'seg-row' }, ...options.map(([v, text]) =>
-      h('button', { type: 'button', class: `chip${prefs[key] === v ? ' active' : ''}`, 'aria-pressed': prefs[key] === v ? 'true' : 'false', onclick: () => setPref(key, v) }, text))));
+      h('button', { type: 'button', class: 'chip ro-chip', 'aria-pressed': prefs[key] === v ? 'true' : 'false', onclick: () => setPref(key, v) }, text))));
 }
 
 /* Linha de ajuste com interruptor do Rochedo: o botão inteiro é o alvo de toque, o interruptor é só o desenho. */
@@ -2066,7 +2066,7 @@ function filterEditView(view, e) {
   words.addEventListener('input', () => { f.words = words.value; });
   const field = (label, el) => h('label', { class: 'edit-field' }, h('span', { class: 'muted small' }, label), el);
   const chips = (items, isOn, onTap) => h('div', { class: 'cp-row' }, ...items.map(([val, label]) => {
-    const b = h('button', { type: 'button', class: `chip${isOn(val) ? ' active' : ''}`, 'aria-pressed': isOn(val) ? 'true' : 'false' }, label);
+    const b = h('button', { type: 'button', class: 'chip ro-chip', 'aria-pressed': isOn(val) ? 'true' : 'false' }, label);
     b.addEventListener('click', () => { onTap(val); b.parentElement.querySelectorAll('.chip').forEach((c, i) => { const on = isOn(items[i][0]); c.classList.toggle('active', on); c.setAttribute('aria-pressed', on ? 'true' : 'false'); }); });
     return b;
   }));
@@ -2565,7 +2565,7 @@ function profileView(view, p) {
     badges.length ? h('div', { class: 'badges' }, ...badges.map(([label, icon]) => h('span', { class: 'badge' }, icon ? svgIcon(icon, 13) : null, label))) : null,
     a.moved ? h('p', { class: 'muted small' }, 'Mudou para ', h('span', { class: 'link-name', role: 'button', tabindex: '0', onclick: () => openProfile(a.moved) }, '@' + a.moved.acct)) : null,
     a.note ? h('div', { class: 'bio' }, sanitizeHtml(a.note, a.emojis)) : null,
-    p.featured && p.featured.length ? h('div', { class: 'featured-tags' }, ...p.featured.map((t) => h('button', { type: 'button', class: 'chip', onclick: () => openTag(t.name) }, `#${t.name}`, t.statuses_count ? h('span', { class: 'muted small' }, ` ${t.statuses_count}`) : null))) : null,
+    p.featured && p.featured.length ? h('div', { class: 'featured-tags' }, ...p.featured.map((t) => h('button', { type: 'button', class: 'chip ro-chip', onclick: () => openTag(t.name) }, `#${t.name}`, t.statuses_count ? h('span', { class: 'muted small' }, ` ${t.statuses_count}`) : null))) : null,
     fields.length ? h('dl', { class: 'fields' }, ...fields) : null,
     h('div', { class: 'counts' },
       h('span', {}, h('strong', {}, fmtCount(a.statuses_count)), ' publicações'),
@@ -2672,7 +2672,7 @@ function otherView(view) {
   const saved = store.get('otherHosts', []);
   if (saved.length) {
     view.append(h('div', { class: 'hosts' }, ...saved.map((host) =>
-      h('button', { type: 'button', class: `chip${host === ex.otherHost ? ' active' : ''}`, onclick: () => goOther(host) }, host))));
+      h('button', { type: 'button', class: 'chip ro-chip', 'aria-pressed': host === ex.otherHost ? 'true' : 'false', onclick: () => goOther(host) }, host))));
   }
   view.append(h('p', { class: 'note muted small' },
     'Mostra a timeline local pública da instância escolhida, só para leitura. Para interagir, abra o original.'));
@@ -2758,7 +2758,7 @@ function bindDock() {
 function searchView(view) {
   const s = state.search;
   view.append(h('div', { class: 'hosts', role: 'group', 'aria-label': 'Tipo de resultado' }, ...SEARCH_TYPES.map(([id, label]) =>
-    h('button', { type: 'button', class: `chip${s.type === id ? ' active' : ''}`, 'aria-pressed': s.type === id ? 'true' : 'false',
+    h('button', { type: 'button', class: 'chip ro-chip', 'aria-pressed': s.type === id ? 'true' : 'false',
       onclick: () => { s.type = id; s.res = null; if (s.q) runSearch(); else render(); } }, label))));
   if (s.error) { view.append(errorState(s.error, () => runSearch())); return; }
   if (s.loading && !s.res) { view.append(emptyState('Buscando…')); return; }
@@ -2786,7 +2786,7 @@ function exploreView(view) {
     view.append(h('div', { class: 'tag-head' },
       h('button', { type: 'button', class: 'icon-btn', 'aria-label': 'Voltar', onclick: closeTag }, svgIcon('back', 22)),
       h('strong', {}, '#' + ex.tag),
-      ex.tagFollowing === null ? null : h('button', { type: 'button', class: `chip push-right${ex.tagFollowing ? ' active' : ''}`, 'aria-pressed': ex.tagFollowing ? 'true' : 'false', onclick: () => toggleFollowTag(ex.tag) }, ex.tagFollowing ? 'Seguindo' : 'Seguir')));
+      ex.tagFollowing === null ? null : h('button', { type: 'button', class: 'chip ro-chip push-right', 'aria-pressed': ex.tagFollowing ? 'true' : 'false', onclick: () => toggleFollowTag(ex.tag) }, ex.tagFollowing ? 'Seguindo' : 'Seguir')));
     renderList(view, 'tag', (s) => statusEl(s));
     return;
   }
@@ -3241,10 +3241,10 @@ function renderPollEditor() {
         p.options.length > 2 ? h('button', { type: 'button', class: 'icon-btn', 'aria-label': 'Remover opção', onclick: () => { p.options.splice(i, 1); renderPollEditor(); saveDraft(); } }, svgIcon('close', 16)) : null);
     }),
     h('div', { class: 'cp-row' },
-      p.options.length < limits.pollOptions ? h('button', { type: 'button', class: 'chip', onclick: () => { p.options.push(''); renderPollEditor(); } }, '+ Opção') : null,
-      h('button', { type: 'button', class: `chip${p.multiple ? ' active' : ''}`, 'aria-pressed': p.multiple ? 'true' : 'false', onclick: () => { p.multiple = !p.multiple; renderPollEditor(); saveDraft(); } }, 'Múltipla escolha')),
+      p.options.length < limits.pollOptions ? h('button', { type: 'button', class: 'chip ro-chip', onclick: () => { p.options.push(''); renderPollEditor(); } }, '+ Opção') : null,
+      h('button', { type: 'button', class: 'chip ro-chip', 'aria-pressed': p.multiple ? 'true' : 'false', onclick: () => { p.multiple = !p.multiple; renderPollEditor(); saveDraft(); } }, 'Múltipla escolha')),
     h('div', { class: 'cp-row', role: 'group', 'aria-label': 'Duração' }, ...durations.map(([s, label]) =>
-      h('button', { type: 'button', class: `chip${p.expires_in === s ? ' active' : ''}`, 'aria-pressed': p.expires_in === s ? 'true' : 'false', onclick: () => { p.expires_in = s; renderPollEditor(); saveDraft(); } }, label))));
+      h('button', { type: 'button', class: 'chip ro-chip', 'aria-pressed': p.expires_in === s ? 'true' : 'false', onclick: () => { p.expires_in = s; renderPollEditor(); saveDraft(); } }, label))));
 }
 
 function togglePoll() {
