@@ -6,6 +6,8 @@ import 'rochedo';
 import './style.css';
 import { desmontarIlhas, ilha } from './src/ilhas.js';
 import Saude from './src/telas/Saude.svelte';
+import Filtros from './src/telas/Filtros.svelte';
+import Agendadas from './src/telas/Agendadas.svelte';
 import { aviso } from 'rochedo/aviso.js';
 import { confirmar } from 'rochedo/confirmar.js';
 import { abrirFolha } from 'rochedo/folha.js';
@@ -1928,25 +1930,16 @@ async function loadFilters(e) {
 
 function filtersView(view, e) {
   view.append(profileBar('Filtros', closeProfile));
-  view.append(h('p', { class: 'muted small filters-note' }, 'Filtros ficam na sua conta da instância e valem em qualquer app. Publicações que casarem aparecem recolhidas, com um botão para mostrar.'));
-  view.append(h('button', { type: 'button', class: 'ro-botao ro-botao--principal add-filter', onclick: () => openFilterEdit(e, null) }, svgIcon('add', 18), 'Novo filtro'));
-  if (e.error) { view.append(errorState(e.error, () => e.reload())); return; }
-  if (!e.loaded) { view.append(loadingState('Carregando…')); return; }
-  if (!e.items.length) { view.append(emptyState('Nenhum filtro ainda.')); return; }
-  e.items.forEach((f) => {
-    const kw = (f.keywords || []).map((k) => k.keyword).join(', ');
-    const meta = [`${(f.context || []).map(ctxLabel).join(', ') || 'sem contexto'}`, f.filter_action === 'hide' ? 'oculta' : 'recolhe',
-      f.expires_at ? `até ${new Date(f.expires_at).toLocaleDateString('pt-BR')}` : null].filter(Boolean).join(' · ');
-    view.append(h('div', { class: 'filter-row' },
-      h('div', { class: 'filter-info' }, h('strong', {}, f.title), h('span', { class: 'muted small' }, kw || 'sem palavras'), h('span', { class: 'muted small' }, meta)),
-      h('div', { class: 'filter-actions' },
-        h('button', { class: 'ro-botao', type: 'button', onclick: () => openFilterEdit(e, f) }, 'Editar'),
-        dangerBtn('Excluir', 'Confirmar', async () => {
-          try {
-            await api(`/api/v2/filters/${f.id}`, { method: 'DELETE' });
-            e.items = e.items.filter((x) => x.id !== f.id); render();
-          } catch (err) { toast(err.message); }
-        }))));
+  ilha(view, Filtros, {
+    e, contexto: ctxLabel,
+    aoNovo: () => openFilterEdit(e, null),
+    aoEditar: (f) => openFilterEdit(e, f),
+    aoExcluir: async (f) => {
+      try {
+        await api(`/api/v2/filters/${f.id}`, { method: 'DELETE' });
+        e.items = e.items.filter((x) => x.id !== f.id); render();
+      } catch (err) { toast(err.message); }
+    },
   });
 }
 
@@ -2023,22 +2016,14 @@ async function loadScheduled(e) {
 
 function scheduledView(view, e) {
   view.append(profileBar('Publicações agendadas', closeProfile));
-  if (e.error) { view.append(errorState(e.error, () => e.reload())); return; }
-  if (!e.loaded) { view.append(loadingState('Carregando…')); return; }
-  if (!e.items.length) { view.append(emptyState('Nenhuma publicação agendada.')); return; }
-  e.items.forEach((it) => {
-    const p = it.params || {};
-    view.append(h('div', { class: 'filter-row' },
-      h('div', { class: 'filter-info' },
-        h('strong', {}, new Date(it.scheduled_at).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })),
-        h('span', {}, p.text || (it.media_attachments && it.media_attachments.length ? '(mídia)' : ''))),
-      h('div', { class: 'filter-actions' },
-        dangerBtn('Cancelar', 'Confirmar', async () => {
-          try {
-            await api(`/api/v1/scheduled_statuses/${it.id}`, { method: 'DELETE' });
-            e.items = e.items.filter((x) => x.id !== it.id); render();
-          } catch (err) { toast(err.message); }
-        }))));
+  ilha(view, Agendadas, {
+    e,
+    aoCancelar: async (it) => {
+      try {
+        await api(`/api/v1/scheduled_statuses/${it.id}`, { method: 'DELETE' });
+        e.items = e.items.filter((x) => x.id !== it.id); render();
+      } catch (err) { toast(err.message); }
+    },
   });
 }
 
