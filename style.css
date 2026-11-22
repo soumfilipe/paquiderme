@@ -54,7 +54,7 @@ button {
 /* ações com rótulo: alvo de toque de 44 px */
 button.primary, button.with-icon, button.row-btn, button.more, .list-row button:not(.list-title), .filter-actions button { min-height: var(--ro-alvo); }
 /* botões que são linhas de conteúdo (nome, handle, opção) mantêm a fonte de texto */
-button.pick-row, button.acc-row, button.tag-row, button.sg-item, button.poll-choice, button.list-title,
+button.pick-row, button.sg-item, button.poll-choice, button.list-title,
 button.link, button.cm-alt, button.edited, button.more-btn, button.tag-name, button.tr-btn, button.more-text, button.count-btn { font: inherit; }
 
 button.primary {
@@ -332,14 +332,8 @@ dialog#composer::backdrop { background: rgb(0 0 0 / .55); }
 .seg-bar .tabs .chip.active { background: var(--accent); color: var(--accent-ink); }
 .section { margin: 16px 16px 4px; font-size: 14px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
 
-.tag-row {
-  display: flex; align-items: center; justify-content: space-between; gap: 12px;
-  width: 100%; text-align: left;
-  background: none; border: 0; border-bottom: 1px solid var(--border); border-radius: 0;
-  padding: 12px 16px;
-}
-.tag-row .tag-info { display: grid; min-width: 0; }
-.tag-row strong { color: var(--accent); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+button.tag-row { padding: 6px 16px; border-bottom: 1px solid var(--border); border-radius: 0; }
+.tag-row .ro-linha__titulo { color: var(--accent); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .spark { flex: none; color: var(--accent); }
 
 .tag-head { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--border); }
@@ -393,11 +387,10 @@ img.emoji { height: 1.2em; width: auto; vertical-align: -0.25em; }
 .counts strong { color: var(--text); }
 .count-btn { background: none; border: 0; padding: 0; border-radius: 0; color: var(--muted); }
 
-.account-row { display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-bottom: 1px solid var(--border); cursor: pointer; }
+.account-row { padding: 6px 16px; border-bottom: 1px solid var(--border); cursor: pointer; }
 .account-row .avatar { width: 44px; height: 44px; border-radius: 10px; flex: none; background: var(--surface-2); }
-.account-row .who { min-width: 0; }
-.account-row .name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.account-row .acct { color: var(--muted); font-size: 13px; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.account-row .acct, .acc-row .ro-linha__sub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.account-row .name, .acc-row .ro-linha__titulo { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .notif .account-row { border-bottom: 0; }
 
 /* Conversas */
@@ -578,11 +571,9 @@ dialog#viewer::backdrop { background: #000; }
 
 /* Contas */
 .acc-list { display: flex; flex-direction: column; gap: 4px; }
-.acc-row { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; padding: 8px 10px; border-radius: 12px; background: transparent; border: 1px solid transparent; color: inherit; }
+.acc-row { padding: 8px 10px; border: 1px solid transparent; border-radius: 12px; }
 .acc-row.active { background: var(--surface-2); border-color: var(--border); }
 .acc-row .avatar { width: 40px; height: 40px; flex: none; }
-.acc-info { display: flex; flex-direction: column; min-width: 0; flex: 1; }
-.acc-info > * { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .bar-actions { display: inline-flex; gap: 2px; }
 #login-cancel { margin-top: 8px; }
 
@@ -616,7 +607,7 @@ body.has-dock #view { padding-bottom: calc(var(--tabbar-h) + var(--sab) + 96px);
 .notif.group .notif-kind { padding-top: 0; margin-bottom: 4px; }
 
 /* Handles na cor de destaque; botão do perfil afastado da capa */
-.status .acct, .account-row .acct, .handle { color: var(--accent); }
+.status .acct, .handle { color: var(--accent); }
 .handle { overflow-wrap: anywhere; }
 .profile-top { align-items: flex-start; }
 .profile-top > :not(.profile-avatar) { margin-top: 56px; }

@@ -1810,10 +1810,10 @@ async function loadMembers(e) {
 }
 
 function personRow(a, label, onclick, cls = '') {
-  return h('div', { class: 'account-row', role: 'button', tabindex: '0', onclick: () => openProfile(a) },
-    h('img', { class: 'avatar', src: safeUrl(a.avatar_static || a.avatar), alt: '', loading: 'lazy' }),
-    h('div', { class: 'who' }, h('div', { class: 'name' }, nameNode(a)), h('span', { class: 'acct' }, '@' + a.acct)),
-    h('button', { type: 'button', class: `row-btn ${cls}`, onclick: (ev) => { ev.stopPropagation(); onclick(ev.currentTarget); } }, label));
+  return h('div', { class: 'ro-linha account-row', role: 'button', tabindex: '0', onclick: () => openProfile(a) },
+    h('span', { class: 'ro-linha__inicio' }, h('img', { class: 'avatar', src: safeUrl(a.avatar_static || a.avatar), alt: '', loading: 'lazy' })),
+    h('span', { class: 'ro-linha__corpo who' }, h('span', { class: 'ro-linha__titulo name' }, nameNode(a)), h('span', { class: 'ro-linha__sub acct' }, '@' + a.acct)),
+    h('span', { class: 'ro-linha__fim' }, h('button', { type: 'button', class: `row-btn ${cls}`, onclick: (ev) => { ev.stopPropagation(); onclick(ev.currentTarget); } }, label)));
 }
 
 function membersView(view, e) {
@@ -2326,11 +2326,11 @@ function activeProfile() {
 const fullAcct = (a) => (a.acct.includes('@') ? a.acct : `${a.acct}@${session.host}`);
 
 function accountRow(a) {
-  return h('div', { class: 'account-row', role: 'button', tabindex: '0', onclick: () => openProfile(a) },
-    h('img', { class: 'avatar', src: safeUrl(a.avatar_static || a.avatar), alt: '', loading: 'lazy' }),
-    h('div', { class: 'who' },
-      h('div', { class: 'name' }, nameNode(a)),
-      h('span', { class: 'acct' }, '@' + a.acct)));
+  return h('div', { class: 'ro-linha account-row', role: 'button', tabindex: '0', onclick: () => openProfile(a) },
+    h('span', { class: 'ro-linha__inicio' }, h('img', { class: 'avatar', src: safeUrl(a.avatar_static || a.avatar), alt: '', loading: 'lazy' })),
+    h('span', { class: 'ro-linha__corpo who' },
+      h('span', { class: 'ro-linha__titulo name' }, nameNode(a)),
+      h('span', { class: 'ro-linha__sub acct' }, '@' + a.acct)));
 }
 
 function openProfile(account) {
@@ -2462,13 +2462,13 @@ function profileBar(title, onBack, extra) {
 function accountRowEl(s) {
   const active = session && sameAcc(s, session);
   const acc = s.account;
-  return h('button', { type: 'button', class: `acc-row${active ? ' active' : ''}`, 'aria-current': active ? 'true' : null,
+  return h('button', { type: 'button', class: `ro-linha acc-row${active ? ' active' : ''}`, 'aria-current': active ? 'true' : null,
     onclick: () => { if (active) { closeSheet(); return; } activate(s); } },
-    h('img', { class: 'avatar', src: safeUrl(acc.avatar), alt: '' }),
-    h('span', { class: 'acc-info' },
-      h('strong', {}, nameNode(acc)),
-      h('span', { class: 'muted small' }, `@${acc.acct}@${s.host}`)),
-    active ? svgIcon('check', 18) : null);
+    h('span', { class: 'ro-linha__inicio' }, h('img', { class: 'avatar', src: safeUrl(acc.avatar), alt: '' })),
+    h('span', { class: 'ro-linha__corpo' },
+      h('span', { class: 'ro-linha__titulo' }, nameNode(acc)),
+      h('span', { class: 'ro-linha__sub' }, `@${acc.acct}@${s.host}`)),
+    active ? h('span', { class: 'ro-linha__fim' }, svgIcon('check', 18)) : null);
 }
 
 function addAccount() {
@@ -2629,11 +2629,11 @@ function tagRow(tag) {
   const two = hist.slice(0, 2);
   const people = two.reduce((n, d) => n + Number(d.accounts || 0), 0);
   const uses = two.reduce((n, d) => n + Number(d.uses || 0), 0);
-  return h('button', { type: 'button', class: 'tag-row', onclick: () => openTag(tag.name) },
-    h('div', { class: 'tag-info' },
-      h('strong', {}, '#' + tag.name),
-      h('span', { class: 'muted small' }, `${people} pessoas · ${uses} publicações nos últimos 2 dias`)),
-    sparkline(hist.slice(0, 7).map((d) => Number(d.uses || 0)).reverse()));
+  return h('button', { type: 'button', class: 'ro-linha tag-row', onclick: () => openTag(tag.name) },
+    h('span', { class: 'ro-linha__corpo' },
+      h('span', { class: 'ro-linha__titulo' }, '#' + tag.name),
+      h('span', { class: 'ro-linha__sub' }, `${people} pessoas · ${uses} publicações nos últimos 2 dias`)),
+    h('span', { class: 'ro-linha__fim' }, sparkline(hist.slice(0, 7).map((d) => Number(d.uses || 0)).reverse())));
 }
 
 function trendsView(view) {
