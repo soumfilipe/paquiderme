@@ -16,7 +16,7 @@
   --radius-pill: var(--ro-raio-pilula);
   --boost: var(--accent);
   --fav: var(--accent);
-  --tabbar-h: 56px;
+  --tabbar-h: var(--ro-barra-altura);
   --bar-top: calc(var(--sat, 0px) + 12px); /* folga abaixo da barra de status do iOS (o toque nessa borda não registra) */
   --sat: env(safe-area-inset-top, 0px);
   --sab: env(safe-area-inset-bottom, 0px);
@@ -92,26 +92,6 @@ button[data-confirmando] { background: var(--danger); border-color: var(--danger
   transition: transform .2s ease;
 }
 
-#tabs {
-  position: fixed;
-  left: 0; right: 0; bottom: 0;
-  height: calc(var(--tabbar-h) + var(--sab));
-  padding-bottom: var(--sab);
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  background: color-mix(in srgb, var(--bg) 92%, transparent);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
-  border-top: 1px solid var(--border);
-  z-index: 10;
-}
-#tabs button {
-  background: none;
-  border: 0;
-  border-radius: 0;
-  color: var(--muted);
-}
-#tabs button.active { color: var(--accent); font-weight: 600; }
 
 #fab {
   position: fixed;
@@ -247,7 +227,6 @@ dialog#composer::backdrop { background: rgb(0 0 0 / .55); }
 
 /* ---------- Ícones (Hugeicons) e microanimações ---------- */
 .ico { display: block; flex: none; }
-#tabs button { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; font-size: 11px; }
 #fab { display: grid; place-items: center; }
 .actions button { display: inline-flex; align-items: center; gap: 6px; }
 .actions button:disabled { opacity: .4; }
@@ -267,7 +246,7 @@ dialog#composer::backdrop { background: rgb(0 0 0 / .55); }
 .boost.pulse .ico { animation: spin .5s ease; }
 .reply:active .ico { transform: translateX(-3px); }
 #fab:active .ico { animation: wiggle .4s ease; }
-#tabs button.active .ico.bump { animation: bump .4s ease; }
+#tabs [aria-current="page"] .ico.bump { animation: bump .4s ease; }
 
 @media (prefers-reduced-motion: reduce) {
   .ico, .ico.bump { animation: none !important; }
@@ -643,8 +622,7 @@ body.has-dock #view { padding-bottom: calc(var(--tabbar-h) + var(--sab) + 96px);
 /* ===== Design system do SDV (brandbook): Bricolage Grotesque + JetBrains Mono, botões em pílula, cartões de 22 px ===== */
 h1, h2, h3, .profile-name, .titulo { font-family: var(--font-title); font-weight: 800; letter-spacing: -0.02em; }
 /* rótulos: mono, caixa alta, 12 px */
-.badge, .card-site, #tabs button span, #tabs button, .seg-bar .chip, .chip, .when time, .status header time, .notif-kind, .count { font-family: var(--font-mono); }
-#tabs button { font-size: 11px; text-transform: uppercase; letter-spacing: 0.02em; }
+.badge, .card-site, .seg-bar .chip, .chip, .when time, .status header time, .notif-kind, .count { font-family: var(--font-mono); }
 .badge { text-transform: uppercase; font-size: 11px; letter-spacing: 0.02em; border-radius: var(--radius-pill); }
 .chip, button.primary, .seg-bar .chip { border-radius: var(--radius-pill); font-weight: 700; }
 button { border-radius: var(--radius-pill); }

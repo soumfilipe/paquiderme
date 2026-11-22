@@ -3038,10 +3038,10 @@ function selectTab(tab) {
   state.profiles = [];
   state.settingsOpen = false;
   if (tab === 'account' && !state.me) state.me = mkProfile(session.account);
-  document.querySelectorAll('#tabs button').forEach((b) => b.classList.toggle('active', b.dataset.tab === tab));
+  document.querySelectorAll('#tabs button').forEach((b) => { if (b.dataset.tab === tab) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current'); });
   $('#fab').hidden = tab === 'account';
   window.scrollTo(0, 0);
-  const icon = document.querySelector('#tabs button.active svg');
+  const icon = document.querySelector('#tabs [aria-current="page"] svg');
   if (icon) { icon.classList.remove('bump'); void icon.getBoundingClientRect(); icon.classList.add('bump'); }
   render();
   if (tab === 'home') {
