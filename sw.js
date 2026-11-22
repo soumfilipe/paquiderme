@@ -44,7 +44,7 @@ self.addEventListener('fetch', (e) => {
   if (req.method !== 'GET' || url.origin !== self.location.origin) return;
 
   // fontes nunca mudam dentro de uma versão do app: do cache direto, sem ir à rede (a versão do CACHE as renova)
-  if (url.pathname.includes('/rochedo/fontes/')) {
+  if ((url.pathname.includes('/rochedo/fontes/') || url.pathname.endsWith('.woff2'))) {
     e.respondWith(caches.open(CACHE).then(async (cache) => {
       const hit = await cache.match(req, { ignoreSearch: true });
       if (hit) return hit;
