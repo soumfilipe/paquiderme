@@ -43,3 +43,7 @@ Tokens, fontes, ícones e abas vêm do [Rochedo](https://github.com/soumfilipe/r
 - O build empacota o app com Vite, copia manifesto/ícones/marca e **gera o `sw.js` de `dist/`**: a lista de arquivos e a versão do cache vêm do conteúdo do build, então não é preciso subir `CACHE` à mão. O `sw.js` da raiz é só o modelo.
 - Publicação: `.github/workflows/pages.yml` constrói e publica `dist/` no GitHub Pages a cada push em `principal`. Em *Settings → Pages*, a fonte precisa estar em **GitHub Actions**.
 - O Svelte já está ligado no Vite para as telas novas (`.svelte`) entrarem uma a uma; hoje o app ainda é o `app.js` de sempre.
+
+### Como uma versão nova chega
+
+O service worker novo baixa em segundo plano e **espera**; o app mostra "nova versão do app · atualizar" (`src/telas/AvisoAtualizacao.svelte`). Ao tocar, o SW novo assume (`SKIP_WAITING`) e a página recarrega. Nada recarrega sozinho, para não perder um rascunho. O app procura versão nova sempre que você volta a ele. É o mesmo fluxo do Life OS. "Atualizar o app (limpar cache)" nas Configurações continua como plano B.

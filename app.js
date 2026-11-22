@@ -8,6 +8,9 @@ import { desmontarIlhas, ilha } from './src/ilhas.js';
 import Saude from './src/telas/Saude.svelte';
 import Filtros from './src/telas/Filtros.svelte';
 import Agendadas from './src/telas/Agendadas.svelte';
+import AvisoAtualizacao from './src/telas/AvisoAtualizacao.svelte';
+import { iniciarAtualizacao } from './src/atualizacao.svelte.js';
+import { mount } from 'svelte';
 import { aviso } from 'rochedo/aviso.js';
 import { confirmar } from 'rochedo/confirmar.js';
 import { abrirFolha } from 'rochedo/folha.js';
@@ -3747,7 +3750,8 @@ function sharedText(params) {
 async function boot() {
   applyPrefs();
   bindUi();
-  if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+  iniciarAtualizacao();
+  mount(AvisoAtualizacao, { target: document.body });
   const params = new URLSearchParams(location.search);
   const shared = sharedText(params);
   if (shared) { store.set('share', shared); ['title', 'text', 'url'].forEach((k) => params.delete(k)); history.replaceState(null, '', location.pathname + (params.toString() ? `?${params}` : '')); }
