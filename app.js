@@ -2,9 +2,11 @@ import {
   OOB, b64url, randomString, pkceChallenge, normalizeHost,
   sanitizeHtml, emojiFragment, safeUrl, timeAgo, h, svgIcon, sparkline, parseNextMaxId,
 } from './lib.js';
-import { aviso } from './rochedo/aviso.js';
-import { confirmar } from './rochedo/confirmar.js';
-import { abrirFolha } from './rochedo/folha.js';
+import 'rochedo';
+import './style.css';
+import { aviso } from 'rochedo/aviso.js';
+import { confirmar } from 'rochedo/confirmar.js';
+import { abrirFolha } from 'rochedo/folha.js';
 
 // anti-clickjacking: o GitHub Pages não permite cabeçalhos (frame-ancestors), então o app se recusa a rodar dentro de um iframe
 if (window.top !== window.self) { document.documentElement.hidden = true; try { window.top.location = window.self.location; } catch { /* sem permissão: fica oculto */ } }

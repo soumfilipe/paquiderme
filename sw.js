@@ -1,29 +1,10 @@
 // Service worker do Paquiderme: só guarda o "casco" do app para abrir rápido/offline.
 // Nunca toca em chamadas à API (são de outra origem e passam direto).
-// Ao mudar qualquer arquivo do app, aumente a versão abaixo.
+// Este arquivo é o modelo: o build troca a lista SHELL e a versão do cache (hash do conteúdo).
 const CACHE = 'paquiderme-v58';
 const SHELL = [
   './',
-  'index.html',
-  'app.js',
-  'lib.js',
-  'rochedo/icones.js',
-  'rochedo/aviso.js',
-  'rochedo/confirmar.js',
-  'rochedo/folha.js',
-  'rochedo/VERSAO',
-  'style.css',
-  'rochedo/rochedo.css',
-  'rochedo/fontes/bricolage-grotesque-latin-400-normal.woff2',
-  'rochedo/fontes/bricolage-grotesque-latin-700-normal.woff2',
-  'rochedo/fontes/bricolage-grotesque-latin-800-normal.woff2',
-  'rochedo/fontes/jetbrains-mono-latin-400-normal.woff2',
-  'rochedo/fontes/jetbrains-mono-latin-700-normal.woff2',
-  'manifest.webmanifest',
-  'icons/icon-192.png',
-  'icons/icon-512.png',
-  'icons/apple-touch-icon.png',
-  'brand/logo-mark.svg',
+  // preenchida no build (scripts/finalizar-build.mjs) com os arquivos reais de dist/
 ];
 
 self.addEventListener('install', (e) => {
