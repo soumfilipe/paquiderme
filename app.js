@@ -3,6 +3,7 @@ import {
   sanitizeHtml, emojiFragment, safeUrl, timeAgo, h, svgIcon, sparkline, parseNextMaxId,
 } from './lib.js';
 import { aviso } from './rochedo/aviso.js';
+import { confirmar } from './rochedo/confirmar.js';
 
 // anti-clickjacking: o GitHub Pages não permite cabeçalhos (frame-ancestors), então o app se recusa a rodar dentro de um iframe
 if (window.top !== window.self) { document.documentElement.hidden = true; try { window.top.location = window.self.location; } catch { /* sem permissão: fica oculto */ } }
@@ -74,6 +75,25 @@ const mkState = () => ({
   },
 });
 let state = mkState();
+
+/* Estados (Rochedo): vazio, erro com "tentar de novo", carregando */
+function emptyState(title, text) {
+  return h('div', { class: 'ro-estado' }, h('p', { class: 'ro-estado__titulo' }, title), text ? h('p', {}, text) : null);
+}
+function errorState(msg, retry) {
+  return h('div', { class: 'ro-estado ro-estado--erro', role: 'alert' },
+    h('p', { class: 'ro-estado__titulo' }, 'Não deu certo'), h('p', {}, msg),
+    h('button', { type: 'button', onclick: retry }, 'Tentar de novo'));
+}
+function loadingState(label = 'Carregando…') {
+  return h('div', { class: 'ro-carregando', 'aria-busy': 'true', 'aria-label': label }, h('i'), h('i'), h('i'));
+}
+/* Ação destrutiva em dois toques (Rochedo) */
+function dangerBtn(label, confirmLabel, onConfirm) {
+  const b = h('button', { type: 'button' }, label);
+  confirmar(b, onConfirm, { rotulo: confirmLabel });
+  return b;
+}
 
 /* ---------- Avisos ---------- */
 
@@ -851,13 +871,11 @@ function notifEl(n) {
 
 function moreButton(kind) {
   const st = getList(kind);
-  if (st.loading) return h('p', { class: 'empty' }, 'Carregando…');
+  if (st.loading) return loadingState('Carregando…');
   if (st.error) {
-    return h('div', { class: 'empty' },
-      h('p', { class: 'error' }, st.error),
-      h('button', { type: 'button', onclick: () => loadList(kind, st.items.length > 0) }, 'Tentar de novo'));
+    return errorState(st.error, () => loadList(kind, st.items.length > 0));
   }
-  if (!st.items.length) return h('p', { class: 'empty' }, 'Nada por aqui ainda.');
+  if (!st.items.length) return emptyState('Nada por aqui ainda.');
   if (!st.more) return h('p', { class: 'empty' }, 'Fim.');
   return h('button', { type: 'button', class: 'more', onclick: () => loadList(kind, true) }, 'Carregar mais');
 }
@@ -933,12 +951,11 @@ function threadView(view, t) {
   kids.forEach((list) => list.sort(byDate));
   const walk = (id, d) => (kids.get(id) || []).forEach((s) => { view.append(item('reply', s, d)); walk(s.id, d + 1); });
   walk(t.status.id, 1);
-  if (t.loading) view.append(h('p', { class: 'empty' }, 'Carregando conversa…'));
+  if (t.loading) view.append(loadingState('Carregando conversa…'));
   else if (t.error) {
-    view.append(h('div', { class: 'empty' }, h('p', { class: 'error' }, t.error),
-      h('button', { type: 'button', onclick: () => loadThread(t) }, 'Tentar de novo')));
+    view.append(errorState(t.error, () => loadThread(t)));
   } else if (t.loaded && !t.descendants.length) {
-    view.append(h('p', { class: 'empty' }, t.ancestors.length ? 'Sem respostas ainda.' : 'Ninguém respondeu ainda.'));
+    view.append(emptyState(t.ancestors.length ? 'Sem respostas ainda.' : 'Ninguém respondeu ainda.'));
   }
 }
 
@@ -1679,9 +1696,9 @@ function listsManageView(view, e) {
   view.append(profileBar('Listas', closeProfile));
   view.append(createListForm());
   const L = state.lists;
-  if (L.error) view.append(h('div', { class: 'empty' }, h('p', { class: 'error' }, L.error), h('button', { type: 'button', onclick: () => loadLists() }, 'Tentar de novo')));
-  else if (L.loading && !L.loaded) view.append(h('p', { class: 'empty' }, 'Carregando…'));
-  else if (!L.items.length) view.append(h('p', { class: 'empty' }, 'Você ainda não tem listas. Crie uma acima e adicione contas que você segue.'));
+  if (L.error) view.append(errorState(L.error, () => loadLists()));
+  else if (L.loading && !L.loaded) view.append(loadingState('Carregando…'));
+  else if (!L.items.length) view.append(emptyState('Você ainda não tem listas. Crie uma acima e adicione contas que você segue.'));
   L.items.forEach((l) => view.append(listRow(l, e)));
 }
 
@@ -1703,21 +1720,18 @@ function listRow(l, e) {
     h('button', { type: 'submit', class: 'primary' }, 'Salvar'),
     h('button', { type: 'button', onclick: () => { e.editing = null; render(); } }, 'Cancelar'));
   }
-  const confirming = e.confirm === l.id;
   return h('div', { class: 'list-row' },
     h('button', { type: 'button', class: 'list-title link', onclick: () => { state.profiles = []; setHomeList(l.id); } }, l.title),
     h('button', { type: 'button', onclick: () => openMembers(l) }, 'Membros'),
-    h('button', { type: 'button', onclick: () => { e.editing = l.id; e.confirm = null; render(); } }, 'Renomear'),
-    h('button', { type: 'button', class: confirming ? 'danger' : '', onclick: async () => {
-      if (!confirming) { e.confirm = l.id; render(); setTimeout(() => { if (e.confirm === l.id) { e.confirm = null; if (topEntry() === e) render(); } }, 4000); return; }
+    h('button', { type: 'button', onclick: () => { e.editing = l.id; render(); } }, 'Renomear'),
+    dangerBtn('Excluir', 'Confirmar', async () => {
       try {
         await api(`/api/v1/lists/${l.id}`, { method: 'DELETE' });
         state.lists.items = state.lists.items.filter((x) => x.id !== l.id);
         if (state.homeList === l.id) { state.homeList = null; state.listTl = mkList(); }
-        e.confirm = null;
         render();
       } catch (err) { toast(err.message); }
-    } }, confirming ? 'Confirmar' : 'Excluir'));
+    }));
 }
 
 function openAccountsEntry(title, path, undoVerb, undoLabel) {
@@ -1757,9 +1771,9 @@ function accountsEntryView(view, e) {
       render();
     } catch (err) { toast(err.message); btn.disabled = false; }
   })));
-  if (e.error) view.append(h('div', { class: 'empty' }, h('p', { class: 'error' }, e.error), h('button', { type: 'button', onclick: () => loadAccountsEntry(e, e.items.length > 0) }, 'Tentar de novo')));
-  else if (e.loading) view.append(h('p', { class: 'empty' }, 'Carregando…'));
-  else if (!e.items.length) view.append(h('p', { class: 'empty' }, 'Ninguém por aqui.'));
+  if (e.error) view.append(errorState(e.error, () => loadAccountsEntry(e, e.items.length > 0)));
+  else if (e.loading) view.append(loadingState('Carregando…'));
+  else if (!e.items.length) view.append(emptyState('Ninguém por aqui.'));
   else if (e.more) view.append(h('button', { type: 'button', class: 'more', onclick: () => loadAccountsEntry(e, true) }, 'Carregar mais'));
 }
 
@@ -1810,7 +1824,7 @@ function membersView(view, e) {
   const memberIds = new Set(e.items.map((m) => m.id));
   if (e.results) {
     view.append(h('h3', { class: 'section' }, 'Resultados'));
-    if (!e.results.length) view.append(h('p', { class: 'empty' }, 'Ninguém encontrado entre quem você segue.'));
+    if (!e.results.length) view.append(emptyState('Ninguém encontrado entre quem você segue.'));
     e.results.forEach((a) => view.append(personRow(a, memberIds.has(a.id) ? 'Na lista' : 'Adicionar', async (btn) => {
       if (memberIds.has(a.id)) return;
       btn.disabled = true;
@@ -1822,9 +1836,9 @@ function membersView(view, e) {
     })));
   }
   view.append(h('h3', { class: 'section' }, `Membros${e.loaded ? ` (${e.items.length})` : ''}`));
-  if (e.error) view.append(h('div', { class: 'empty' }, h('p', { class: 'error' }, e.error), h('button', { type: 'button', onclick: () => loadMembers(e) }, 'Tentar de novo')));
-  else if (e.loading && !e.loaded) view.append(h('p', { class: 'empty' }, 'Carregando…'));
-  else if (!e.items.length) view.append(h('p', { class: 'empty' }, 'Lista vazia. Busque acima uma conta que você segue.'));
+  if (e.error) view.append(errorState(e.error, () => loadMembers(e)));
+  else if (e.loading && !e.loaded) view.append(loadingState('Carregando…'));
+  else if (!e.items.length) view.append(emptyState('Lista vazia. Busque acima uma conta que você segue.'));
   e.items.forEach((a) => view.append(personRow(a, 'Remover', async (btn) => {
     btn.disabled = true;
     try {
@@ -1859,9 +1873,9 @@ function openListPicker(account) {
 function listPickView(view, e) {
   view.append(profileBar(`Listas de @${e.account.acct}`, closeProfile));
   view.append(createListForm());
-  if (e.error) view.append(h('div', { class: 'empty' }, h('p', { class: 'error' }, e.error), h('button', { type: 'button', onclick: () => e.reload() }, 'Tentar de novo')));
-  else if (!e.loaded) view.append(h('p', { class: 'empty' }, 'Carregando…'));
-  else if (!state.lists.items.length) view.append(h('p', { class: 'empty' }, 'Crie uma lista acima para começar.'));
+  if (e.error) view.append(errorState(e.error, () => e.reload()));
+  else if (!e.loaded) view.append(loadingState('Carregando…'));
+  else if (!state.lists.items.length) view.append(emptyState('Crie uma lista acima para começar.'));
   if (!e.loaded) return;
   state.lists.items.forEach((l) => {
     const on = e.member.has(l.id);
@@ -1904,11 +1918,10 @@ function filtersView(view, e) {
   view.append(profileBar('Filtros', closeProfile));
   view.append(h('p', { class: 'muted small filters-note' }, 'Filtros ficam na sua conta da instância e valem em qualquer app. Publicações que casarem aparecem recolhidas, com um botão para mostrar.'));
   view.append(h('button', { type: 'button', class: 'with-icon primary add-filter', onclick: () => openFilterEdit(e, null) }, svgIcon('add', 18), 'Novo filtro'));
-  if (e.error) { view.append(h('div', { class: 'empty' }, h('p', { class: 'error' }, e.error), h('button', { type: 'button', onclick: () => e.reload() }, 'Tentar de novo'))); return; }
-  if (!e.loaded) { view.append(h('p', { class: 'empty' }, 'Carregando…')); return; }
-  if (!e.items.length) { view.append(h('p', { class: 'empty' }, 'Nenhum filtro ainda.')); return; }
+  if (e.error) { view.append(errorState(e.error, () => e.reload())); return; }
+  if (!e.loaded) { view.append(loadingState('Carregando…')); return; }
+  if (!e.items.length) { view.append(emptyState('Nenhum filtro ainda.')); return; }
   e.items.forEach((f) => {
-    const confirming = e.confirm === f.id;
     const kw = (f.keywords || []).map((k) => k.keyword).join(', ');
     const meta = [`${(f.context || []).map(ctxLabel).join(', ') || 'sem contexto'}`, f.filter_action === 'hide' ? 'oculta' : 'recolhe',
       f.expires_at ? `até ${new Date(f.expires_at).toLocaleDateString('pt-BR')}` : null].filter(Boolean).join(' · ');
@@ -1916,13 +1929,12 @@ function filtersView(view, e) {
       h('div', { class: 'filter-info' }, h('strong', {}, f.title), h('span', { class: 'muted small' }, kw || 'sem palavras'), h('span', { class: 'muted small' }, meta)),
       h('div', { class: 'filter-actions' },
         h('button', { type: 'button', onclick: () => openFilterEdit(e, f) }, 'Editar'),
-        h('button', { type: 'button', class: confirming ? 'danger' : '', onclick: async () => {
-          if (!confirming) { e.confirm = f.id; render(); setTimeout(() => { if (e.confirm === f.id) { e.confirm = null; if (topEntry() === e) render(); } }, 4000); return; }
+        dangerBtn('Excluir', 'Confirmar', async () => {
           try {
             await api(`/api/v2/filters/${f.id}`, { method: 'DELETE' });
-            e.items = e.items.filter((x) => x.id !== f.id); e.confirm = null; render();
+            e.items = e.items.filter((x) => x.id !== f.id); render();
           } catch (err) { toast(err.message); }
-        } }, confirming ? 'Confirmar' : 'Excluir'))));
+        }))));
   });
 }
 
@@ -1976,7 +1988,7 @@ async function runHealth(e) {
 
 function healthView(view, e) {
   view.append(profileBar('Status da instância', closeProfile));
-  if (!e.checks) { view.append(h('p', { class: 'empty' }, 'Verificando…')); return; }
+  if (!e.checks) { view.append(loadingState('Verificando…')); return; }
   const worst = e.checks.some((c) => c.state === 'bad') ? 'bad' : e.checks.some((c) => c.state === 'warn') ? 'warn' : 'ok';
   const head = { ok: 'Tudo funcionando', warn: 'Funcionando com lentidão ou ressalvas', bad: 'Há problemas' }[worst];
   view.append(h('div', { class: `health-head ${worst}` }, h('span', { class: 'health-dot' }), h('strong', {}, head)));
@@ -2009,24 +2021,22 @@ async function loadScheduled(e) {
 
 function scheduledView(view, e) {
   view.append(profileBar('Publicações agendadas', closeProfile));
-  if (e.error) { view.append(h('div', { class: 'empty' }, h('p', { class: 'error' }, e.error), h('button', { type: 'button', onclick: () => e.reload() }, 'Tentar de novo'))); return; }
-  if (!e.loaded) { view.append(h('p', { class: 'empty' }, 'Carregando…')); return; }
-  if (!e.items.length) { view.append(h('p', { class: 'empty' }, 'Nenhuma publicação agendada.')); return; }
+  if (e.error) { view.append(errorState(e.error, () => e.reload())); return; }
+  if (!e.loaded) { view.append(loadingState('Carregando…')); return; }
+  if (!e.items.length) { view.append(emptyState('Nenhuma publicação agendada.')); return; }
   e.items.forEach((it) => {
-    const confirming = e.confirm === it.id;
     const p = it.params || {};
     view.append(h('div', { class: 'filter-row' },
       h('div', { class: 'filter-info' },
         h('strong', {}, new Date(it.scheduled_at).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })),
         h('span', {}, p.text || (it.media_attachments && it.media_attachments.length ? '(mídia)' : ''))),
       h('div', { class: 'filter-actions' },
-        h('button', { type: 'button', class: confirming ? 'danger' : '', onclick: async () => {
-          if (!confirming) { e.confirm = it.id; render(); setTimeout(() => { if (e.confirm === it.id) { e.confirm = null; if (topEntry() === e) render(); } }, 4000); return; }
+        dangerBtn('Cancelar', 'Confirmar', async () => {
           try {
             await api(`/api/v1/scheduled_statuses/${it.id}`, { method: 'DELETE' });
-            e.items = e.items.filter((x) => x.id !== it.id); e.confirm = null; render();
+            e.items = e.items.filter((x) => x.id !== it.id); render();
           } catch (err) { toast(err.message); }
-        } }, confirming ? 'Confirmar' : 'Cancelar'))));
+        }))));
   });
 }
 
@@ -2204,8 +2214,8 @@ async function saveEditProfile(e) {
 
 function editProfileView(view, e) {
   view.append(profileBar('Editar perfil', () => closeEditProfile(e)));
-  if (e.error && !e.loaded) { view.append(h('div', { class: 'empty' }, h('p', { class: 'error' }, e.error), h('button', { type: 'button', onclick: () => loadEditProfile(e) }, 'Tentar de novo'))); return; }
-  if (!e.loaded) { view.append(h('p', { class: 'empty' }, 'Carregando…')); return; }
+  if (e.error && !e.loaded) { view.append(errorState(e.error, () => loadEditProfile(e))); return; }
+  if (!e.loaded) { view.append(loadingState('Carregando…')); return; }
   const f = e.form;
   const touch = () => { e.dirty = true; };
 
@@ -2621,11 +2631,10 @@ function tagRow(tag) {
 function trendsView(view) {
   const t = state.trends;
   if (t.error) {
-    view.append(h('div', { class: 'empty' }, h('p', { class: 'error' }, t.error),
-      h('button', { type: 'button', onclick: loadTrends }, 'Tentar de novo')));
+    view.append(errorState(t.error, loadTrends));
     return;
   }
-  if (t.loading && !t.loaded) { view.append(h('p', { class: 'empty' }, 'Carregando…')); return; }
+  if (t.loading && !t.loaded) { view.append(loadingState('Carregando…')); return; }
   t.notices.forEach((n) => view.append(h('div', { class: 'notice' },
     h('div', { class: 'notice-body' }, sanitizeHtml(n.content, n.emojis)),
     h('button', { type: 'button', class: 'link', onclick: async () => {
@@ -2640,7 +2649,7 @@ function trendsView(view) {
     t.links.forEach((l) => { const c = cardEl(l); if (c) view.append(h('div', { class: 'trend-link' }, c)); });
   }
   view.append(h('h3', { class: 'section' }, 'Hashtags em alta'));
-  if (!t.tags.length) view.append(h('p', { class: 'empty' }, 'Nenhuma hashtag em alta agora.'));
+  if (!t.tags.length) view.append(emptyState('Nenhuma hashtag em alta agora.'));
   t.tags.forEach((tag) => view.append(tagRow(tag)));
   if (t.statuses.length) {
     view.append(h('h3', { class: 'section' }, 'Publicações em alta'));
@@ -2747,11 +2756,11 @@ function searchView(view) {
   view.append(h('div', { class: 'hosts', role: 'group', 'aria-label': 'Tipo de resultado' }, ...SEARCH_TYPES.map(([id, label]) =>
     h('button', { type: 'button', class: `chip${s.type === id ? ' active' : ''}`, 'aria-pressed': s.type === id ? 'true' : 'false',
       onclick: () => { s.type = id; s.res = null; if (s.q) runSearch(); else render(); } }, label))));
-  if (s.error) { view.append(h('div', { class: 'empty' }, h('p', { class: 'error' }, s.error), h('button', { type: 'button', onclick: () => runSearch() }, 'Tentar de novo'))); return; }
-  if (s.loading && !s.res) { view.append(h('p', { class: 'empty' }, 'Buscando…')); return; }
+  if (s.error) { view.append(errorState(s.error, () => runSearch())); return; }
+  if (s.loading && !s.res) { view.append(emptyState('Buscando…')); return; }
   if (!s.res) return;
   const { accounts, hashtags, statuses } = s.res;
-  if (!accounts.length && !hashtags.length && !statuses.length) { view.append(h('p', { class: 'empty' }, 'Nada encontrado.')); return; }
+  if (!accounts.length && !hashtags.length && !statuses.length) { view.append(emptyState('Nada encontrado.')); return; }
   if (accounts.length) {
     if (!s.type) view.append(h('h3', { class: 'section' }, 'Contas'));
     accounts.forEach((a) => view.append(accountRow(a)));
@@ -2829,9 +2838,9 @@ async function loadFollowedTags() {
 
 function tagsView(view) {
   const f = state.followedTags;
-  if (f.error) { view.append(h('div', { class: 'empty' }, h('p', { class: 'error' }, f.error), h('button', { type: 'button', onclick: loadFollowedTags }, 'Tentar de novo'))); return; }
-  if (!f.loaded) { view.append(h('p', { class: 'empty' }, 'Carregando…')); return; }
-  if (!f.items.length) { view.append(h('p', { class: 'empty' }, 'Você ainda não segue hashtags. Abra uma hashtag e toque em Seguir: as publicações dela passam a aparecer no Início.')); return; }
+  if (f.error) { view.append(errorState(f.error, loadFollowedTags)); return; }
+  if (!f.loaded) { view.append(loadingState('Carregando…')); return; }
+  if (!f.items.length) { view.append(emptyState('Você ainda não segue hashtags. Abra uma hashtag e toque em Seguir: as publicações dela passam a aparecer no Início.')); return; }
   f.items.forEach((t) => view.append(h('div', { class: 'tag-row' },
     h('button', { type: 'button', class: 'tag-name', onclick: () => openTag(t.name) }, '#' + t.name),
     h('button', { type: 'button', onclick: async () => {
