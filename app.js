@@ -8,6 +8,10 @@ import { desmontarIlhas, ilha } from './src/ilhas.js';
 import Saude from './src/telas/Saude.svelte';
 import Filtros from './src/telas/Filtros.svelte';
 import Agendadas from './src/telas/Agendadas.svelte';
+import ContasEntrada from './src/telas/ContasEntrada.svelte';
+import Membros from './src/telas/Membros.svelte';
+import Listas from './src/telas/Listas.svelte';
+import EscolherListas from './src/telas/EscolherListas.svelte';
 import Perfil from './src/telas/Perfil.svelte';
 import AvisoAtualizacao from './src/telas/AvisoAtualizacao.svelte';
 import { iniciarAtualizacao } from './src/atualizacao.svelte.js';
@@ -1645,56 +1649,34 @@ async function createList(title) {
   } catch (e) { toast(e.message); }
 }
 
-function createListForm() {
-  const input = h('input', { placeholder: 'Nome da nova lista', maxlength: '100', 'aria-label': 'Nome da nova lista' });
-  return h('form', { class: 'inst-form', onsubmit: async (ev) => { ev.preventDefault(); await createList(input.value); input.value = ''; } },
-    input, h('button', { type: 'submit', class: 'ro-botao ro-botao--principal' }, 'Criar'));
-}
-
 function openListsManage() {
   pushEntry({ type: 'lists', editing: null, confirm: null, reload: () => loadLists() });
 }
 
 function listsManageView(view, e) {
   view.append(profileBar('Listas', closeProfile));
-  view.append(createListForm());
-  const L = state.lists;
-  if (L.error) view.append(errorState(L.error, () => loadLists()));
-  else if (L.loading && !L.loaded) view.append(loadingState('Carregando…'));
-  else if (!L.items.length) view.append(emptyState('Você ainda não tem listas. Crie uma acima e adicione contas que você segue.'));
-  L.items.forEach((l) => view.append(listRow(l, e)));
-}
-
-function listRow(l, e) {
-  if (e.editing === l.id) {
-    const input = h('input', { value: l.title, maxlength: '100', 'aria-label': 'Novo nome da lista' });
-    return h('form', { class: 'list-row', onsubmit: async (ev) => {
-      ev.preventDefault();
-      const title = input.value.trim();
-      if (!title) return;
+  ilha(view, Listas, {
+    L: state.lists, e, aoCriar: createList, aoRecarregar: () => loadLists(),
+    aoAbrir: (l) => { state.profiles = []; setHomeList(l.id); },
+    aoMembros: openMembers,
+    aoEditar: (id) => { e.editing = id; render(); },
+    aoRenomear: async (l, title) => {
       try {
         const u = await api(`/api/v1/lists/${l.id}`, { method: 'PUT', body: { title } });
         l.title = u.title;
         e.editing = null;
         render();
       } catch (err) { toast(err.message); }
-    } },
-    input,
-    h('button', { type: 'submit', class: 'ro-botao ro-botao--principal' }, 'Salvar'),
-    h('button', { class: 'ro-botao', type: 'button', onclick: () => { e.editing = null; render(); } }, 'Cancelar'));
-  }
-  return h('div', { class: 'list-row' },
-    h('button', { type: 'button', class: 'list-title link', onclick: () => { state.profiles = []; setHomeList(l.id); } }, l.title),
-    h('button', { class: 'ro-botao', type: 'button', onclick: () => openMembers(l) }, 'Membros'),
-    h('button', { class: 'ro-botao', type: 'button', onclick: () => { e.editing = l.id; render(); } }, 'Renomear'),
-    dangerBtn('Excluir', 'Confirmar', async () => {
+    },
+    aoExcluir: async (l) => {
       try {
         await api(`/api/v1/lists/${l.id}`, { method: 'DELETE' });
         state.lists.items = state.lists.items.filter((x) => x.id !== l.id);
         if (state.homeList === l.id) { state.homeList = null; state.listTl = mkList(); }
         render();
       } catch (err) { toast(err.message); }
-    }));
+    },
+  });
 }
 
 function openAccountsEntry(title, path, undoVerb, undoLabel) {
@@ -1724,20 +1706,23 @@ async function loadAccountsEntry(e, append) {
   }
 }
 
+function contaCtx() { return { url: safeUrl, nomeNo: nameNode, abrir: openProfile }; }
+
 function accountsEntryView(view, e) {
   view.append(profileBar(e.title, closeProfile));
-  e.items.forEach((a) => view.append(personRow(a, e.undoLabel, async (btn) => {
-    btn.disabled = true;
-    try {
-      await api(`/api/v1/accounts/${a.id}/${e.undoVerb}`, { method: 'POST' });
-      e.items = e.items.filter((x) => x.id !== a.id);
-      render();
-    } catch (err) { toast(err.message); btn.disabled = false; }
-  })));
-  if (e.error) view.append(errorState(e.error, () => loadAccountsEntry(e, e.items.length > 0)));
-  else if (e.loading) view.append(loadingState('Carregando…'));
-  else if (!e.items.length) view.append(emptyState('Ninguém por aqui.'));
-  else if (e.more) view.append(h('button', { type: 'button', class: 'ro-botao more', onclick: () => loadAccountsEntry(e, true) }, 'Carregar mais'));
+  ilha(view, ContasEntrada, {
+    e, c: contaCtx(),
+    aoRecarregar: () => loadAccountsEntry(e, e.items.length > 0),
+    aoMais: () => loadAccountsEntry(e, true),
+    aoDesfazer: async (a, btn) => {
+      btn.disabled = true;
+      try {
+        await api(`/api/v1/accounts/${a.id}/${e.undoVerb}`, { method: 'POST' });
+        e.items = e.items.filter((x) => x.id !== a.id);
+        render();
+      } catch (err) { toast(err.message); btn.disabled = false; }
+    },
+  });
 }
 
 function openMembers(list) {
@@ -1764,52 +1749,35 @@ async function loadMembers(e) {
   }
 }
 
-function personRow(a, label, onclick, cls = '') {
-  return h('div', { class: 'ro-linha account-row', role: 'button', tabindex: '0', onclick: () => openProfile(a) },
-    h('span', { class: 'ro-linha__inicio' }, h('img', { class: 'ro-avatar avatar', src: safeUrl(a.avatar_static || a.avatar), alt: '', loading: 'lazy' })),
-    h('span', { class: 'ro-linha__corpo who' }, h('span', { class: 'ro-linha__titulo name' }, nameNode(a)), h('span', { class: 'ro-linha__sub acct' }, '@' + a.acct)),
-    h('span', { class: 'ro-linha__fim' }, h('button', { type: 'button', class: `ro-botao row-btn ${cls}`, onclick: (ev) => { ev.stopPropagation(); onclick(ev.currentTarget); } }, label)));
-}
-
 function membersView(view, e) {
   view.append(profileBar(e.list.title, closeProfile));
-  const input = h('input', { placeholder: 'Buscar entre quem você segue', value: e.q, autocapitalize: 'none', autocorrect: 'off', spellcheck: 'false', 'aria-label': 'Buscar contas que você segue' });
-  view.append(h('form', { class: 'inst-form', onsubmit: async (ev) => {
-    ev.preventDefault();
-    e.q = input.value.trim();
-    if (!e.q) { e.results = null; render(); return; }
-    try {
-      e.results = await api('/api/v1/accounts/search', { params: { q: e.q, following: 'true', limit: 10 } });
-    } catch (err) { toast(err.message); return; }
-    render();
-  } }, input, h('button', { type: 'submit', class: 'ro-botao ro-botao--principal' }, 'Buscar')));
-
-  const memberIds = new Set(e.items.map((m) => m.id));
-  if (e.results) {
-    view.append(h('h3', { class: 'ro-rotulo section' }, 'Resultados'));
-    if (!e.results.length) view.append(emptyState('Ninguém encontrado entre quem você segue.'));
-    e.results.forEach((a) => view.append(personRow(a, memberIds.has(a.id) ? 'Na lista' : 'Adicionar', async (btn) => {
-      if (memberIds.has(a.id)) return;
+  ilha(view, Membros, {
+    e, c: contaCtx(), aoRecarregar: () => loadMembers(e),
+    aoBuscar: async (q) => {
+      e.q = q;
+      if (!q) { e.results = null; render(); return; }
+      try {
+        e.results = await api('/api/v1/accounts/search', { params: { q, following: 'true', limit: 10 } });
+      } catch (err) { toast(err.message); return; }
+      render();
+    },
+    aoAdicionar: async (a, btn) => {
       btn.disabled = true;
       try {
         await api(`/api/v1/lists/${e.list.id}/accounts`, { method: 'POST', body: { account_ids: [a.id] } });
         e.items.push(a);
         render();
       } catch (err) { toast(err.message); btn.disabled = false; }
-    })));
-  }
-  view.append(h('h3', { class: 'ro-rotulo section' }, `Membros${e.loaded ? ` (${e.items.length})` : ''}`));
-  if (e.error) view.append(errorState(e.error, () => loadMembers(e)));
-  else if (e.loading && !e.loaded) view.append(loadingState('Carregando…'));
-  else if (!e.items.length) view.append(emptyState('Lista vazia. Busque acima uma conta que você segue.'));
-  e.items.forEach((a) => view.append(personRow(a, 'Remover', async (btn) => {
-    btn.disabled = true;
-    try {
-      await api(`/api/v1/lists/${e.list.id}/accounts`, { method: 'DELETE', body: { account_ids: [a.id] } });
-      e.items = e.items.filter((x) => x.id !== a.id);
-      render();
-    } catch (err) { toast(err.message); btn.disabled = false; }
-  })));
+    },
+    aoRemover: async (a, btn) => {
+      btn.disabled = true;
+      try {
+        await api(`/api/v1/lists/${e.list.id}/accounts`, { method: 'DELETE', body: { account_ids: [a.id] } });
+        e.items = e.items.filter((x) => x.id !== a.id);
+        render();
+      } catch (err) { toast(err.message); btn.disabled = false; }
+    },
+  });
 }
 
 // Escolher em quais listas uma conta (que você segue) aparece
@@ -1835,21 +1803,16 @@ function openListPicker(account) {
 
 function listPickView(view, e) {
   view.append(profileBar(`Listas de @${e.account.acct}`, closeProfile));
-  view.append(createListForm());
-  if (e.error) view.append(errorState(e.error, () => e.reload()));
-  else if (!e.loaded) view.append(loadingState('Carregando…'));
-  else if (!state.lists.items.length) view.append(emptyState('Crie uma lista acima para começar.'));
-  if (!e.loaded) return;
-  state.lists.items.forEach((l) => {
-    const on = e.member.has(l.id);
-    view.append(h('button', { type: 'button', class: `pick-row${on ? ' on' : ''}`, role: 'switch', 'aria-checked': on ? 'true' : 'false', onclick: async (ev) => {
-      const btn = ev.currentTarget; btn.disabled = true;
+  ilha(view, EscolherListas, {
+    e, listas: state.lists.items, aoCriar: createList, aoRecarregar: () => e.reload(),
+    alternar: async (l, nela, btn) => {
+      btn.disabled = true;
       try {
-        await api(`/api/v1/lists/${l.id}/accounts`, { method: on ? 'DELETE' : 'POST', body: { account_ids: [e.account.id] } });
-        if (on) e.member.delete(l.id); else e.member.add(l.id);
+        await api(`/api/v1/lists/${l.id}/accounts`, { method: nela ? 'DELETE' : 'POST', body: { account_ids: [e.account.id] } });
+        if (nela) e.member.delete(l.id); else e.member.add(l.id);
         render();
       } catch (err) { toast(err.message); btn.disabled = false; }
-    } }, h('span', { class: 'pick-box' }, on ? svgIcon('check', 16) : null), l.title));
+    },
   });
 }
 
