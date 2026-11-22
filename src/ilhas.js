@@ -4,9 +4,13 @@ import { mount, unmount } from 'svelte';
 
 let vivas = [];
 
+/** Tipos de lista cuja tela é reativa (Svelte) na vista atual: carregar essas listas não precisa reconstruir a vista. */
+export const reativas = new Map(); // tipo -> objeto da lista mostrado
+
 export function desmontarIlhas() {
   for (const i of vivas) unmount(i);
   vivas = [];
+  reativas.clear();
 }
 
 /** Monta `Tela` dentro de `vista` com `props`. Chamar depois de desmontarIlhas() (o render() faz isso). */
