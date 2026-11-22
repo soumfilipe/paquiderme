@@ -1361,10 +1361,15 @@ function prefChoice(label, key, options) {
       h('button', { type: 'button', class: `chip${prefs[key] === v ? ' active' : ''}`, 'aria-pressed': prefs[key] === v ? 'true' : 'false', onclick: () => setPref(key, v) }, text))));
 }
 
+/* Linha de ajuste com interruptor do Rochedo: o botão inteiro é o alvo de toque, o interruptor é só o desenho. */
+function switchRow(label, on, onclick) {
+  return h('button', { type: 'button', class: `pick-row switch-row${on ? ' on' : ''}`, role: 'switch', 'aria-checked': on ? 'true' : 'false', onclick },
+    h('span', {}, label), h('span', { class: 'ro-interruptor', 'aria-checked': on ? 'true' : 'false', 'aria-hidden': 'true' }));
+}
+
 function prefSwitch(label, key) {
   const on = !!prefs[key];
-  return h('button', { type: 'button', class: `pick-row${on ? ' on' : ''}`, role: 'switch', 'aria-checked': on ? 'true' : 'false', onclick: () => setPref(key, !on) },
-    h('span', { class: 'pick-box' }, on ? svgIcon('check', 16) : null), label);
+  return switchRow(label, on, () => setPref(key, !on));
 }
 
 function prefsSection() {
@@ -1573,8 +1578,7 @@ function pushSection() {
   if (ps.sub) {
     PUSH_ALERTS.forEach(([k, label]) => {
       const on = !!(ps.sub.alerts && ps.sub.alerts[k]);
-      box.append(h('button', { type: 'button', class: `pick-row${on ? ' on' : ''}`, role: 'switch', 'aria-checked': on ? 'true' : 'false', onclick: () => setPushAlert(k, !on) },
-        h('span', { class: 'pick-box' }, on ? svgIcon('check', 16) : null), label));
+      box.append(switchRow(label, on, () => setPushAlert(k, !on)));
     });
     box.append(h('button', { type: 'button', onclick: disablePush }, 'Desativar avisos'));
   } else {
