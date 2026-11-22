@@ -1,6 +1,6 @@
 // Funções puras/auxiliares, sem estado. Separadas do app.js para poderem ser testadas.
 
-import { ICONES as ICONS } from './rochedo/icones.js';
+import { ICONES as ICONS } from 'rochedo/icones.js';
 
 export const OOB = 'urn:ietf:wg:oauth:2.0:oob';
 

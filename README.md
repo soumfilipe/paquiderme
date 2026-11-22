@@ -34,7 +34,7 @@ Streaming por WebSocket, push (Web Push direto do Mastodon), perfis, busca, envi
 
 ## Design system
 
-Tokens, fontes, ícones e abas vêm do [Rochedo](https://github.com/soumfilipe/rochedo), copiados para `rochedo/`. Para atualizar: `scripts/sync-rochedo.sh vX.Y.Z`, depois subir `CACHE` em `sw.js`. O `style.css` só aliasa as variáveis antigas (`--bg`, `--accent`…) para `--ro-*`.
+Tokens, fontes, ícones e abas vêm do [Rochedo](https://github.com/soumfilipe/rochedo), vêm como dependência npm (`github:soumfilipe/rochedo#vX.Y.Z`). Para atualizar: `npm i github:soumfilipe/rochedo#vX.Y.Z`; o service worker se renova sozinho no build. O `style.css` só aliasa as variáveis antigas (`--bg`, `--accent`…) para `--ro-*`.
 
 
 ## Desenvolvimento e publicação
