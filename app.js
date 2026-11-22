@@ -441,7 +441,7 @@ async function accountAction(account, verb, msg) {
 function reportSheet(account, status) {
   const comment = h('textarea', { class: 'sheet-text', rows: '4', maxlength: '1000', placeholder: 'O que há de errado? (opcional)', 'aria-label': 'Motivo da denúncia' });
   const remote = account.acct.includes('@');
-  const fwd = h('input', { type: 'checkbox', checked: true });
+  const fwd = h('input', { class: 'ro-caixa', type: 'checkbox', checked: true });
   openSheet(`Denunciar @${account.acct}`, [{
     label: 'Enviar denúncia', icon: 'flag', danger: true,
     onclick: async () => {
@@ -454,7 +454,7 @@ function reportSheet(account, status) {
       } catch (e) { toast(e.message); }
     },
   }], h('div', { class: 'sheet-form' }, comment,
-    remote ? h('label', { class: 'sheet-check' }, fwd, ` Encaminhar também à instância de @${account.acct.split('@')[1]}`) : null));
+    remote ? h('label', { class: 'ro-opcao sheet-check' }, fwd, ` Encaminhar também à instância de @${account.acct.split('@')[1]}`) : null));
 }
 
 async function followOptions(account, patch, msg) {
@@ -636,7 +636,7 @@ function quoteEl(q, host) {
   }
   const a = qs.account;
   return h('div', { class: 'quote', role: 'button', tabindex: '0', onclick: () => openThread(qs, host), onkeydown: (e) => { if (e.key === 'Enter') openThread(qs, host); } },
-    h('div', { class: 'quote-head' }, h('img', { class: 'avatar sm', src: safeUrl(a.avatar_static || a.avatar), alt: '', loading: 'lazy' }), h('strong', {}, nameNode(a)), h('span', { class: 'acct' }, '@' + a.acct)),
+    h('div', { class: 'quote-head' }, h('img', { class: 'ro-avatar avatar sm', src: safeUrl(a.avatar_static || a.avatar), alt: '', loading: 'lazy' }), h('strong', {}, nameNode(a)), h('span', { class: 'acct' }, '@' + a.acct)),
     qs.spoiler_text ? h('p', { class: 'muted small' }, qs.spoiler_text) : h('div', { class: 'quote-body' }, sanitizeHtml(qs.content, qs.emojis)));
 }
 
@@ -668,7 +668,7 @@ function statusEl(s, { readonly = false, host = null } = {}) {
   }
   el.append(h('header', {},
     h('div', { class: 'who-link', role: 'button', tabindex: '0', 'aria-label': `Abrir perfil de ${a.acct}`, onclick: () => openAccountFrom(a, host) },
-      h('img', { class: 'avatar', src: safeUrl(a.avatar_static || a.avatar), alt: '', loading: 'lazy' }),
+      h('img', { class: 'ro-avatar avatar', src: safeUrl(a.avatar_static || a.avatar), alt: '', loading: 'lazy' }),
       h('div', { class: 'who' },
         h('div', { class: 'name' }, nameNode(a)),
         h('span', { class: 'acct' }, '@' + a.acct))),
@@ -776,7 +776,7 @@ const GROUP_VERBS = {
 function avatarStack(accs) {
   const max = 6;
   return h('div', { class: 'notif-avatars' },
-    ...accs.slice(0, max).map((a) => h('img', { class: 'avatar', src: safeUrl(a.avatar_static || a.avatar), alt: a.display_name || a.acct, loading: 'lazy', onclick: () => openProfile(a) })),
+    ...accs.slice(0, max).map((a) => h('img', { class: 'ro-avatar avatar', src: safeUrl(a.avatar_static || a.avatar), alt: a.display_name || a.acct, loading: 'lazy', onclick: () => openProfile(a) })),
     accs.length > max ? h('span', { class: 'more-count' }, `+${accs.length - max}`) : null);
 }
 
@@ -1811,7 +1811,7 @@ async function loadMembers(e) {
 
 function personRow(a, label, onclick, cls = '') {
   return h('div', { class: 'ro-linha account-row', role: 'button', tabindex: '0', onclick: () => openProfile(a) },
-    h('span', { class: 'ro-linha__inicio' }, h('img', { class: 'avatar', src: safeUrl(a.avatar_static || a.avatar), alt: '', loading: 'lazy' })),
+    h('span', { class: 'ro-linha__inicio' }, h('img', { class: 'ro-avatar avatar', src: safeUrl(a.avatar_static || a.avatar), alt: '', loading: 'lazy' })),
     h('span', { class: 'ro-linha__corpo who' }, h('span', { class: 'ro-linha__titulo name' }, nameNode(a)), h('span', { class: 'ro-linha__sub acct' }, '@' + a.acct)),
     h('span', { class: 'ro-linha__fim' }, h('button', { type: 'button', class: `ro-botao row-btn ${cls}`, onclick: (ev) => { ev.stopPropagation(); onclick(ev.currentTarget); } }, label)));
 }
@@ -2327,7 +2327,7 @@ const fullAcct = (a) => (a.acct.includes('@') ? a.acct : `${a.acct}@${session.ho
 
 function accountRow(a) {
   return h('div', { class: 'ro-linha account-row', role: 'button', tabindex: '0', onclick: () => openProfile(a) },
-    h('span', { class: 'ro-linha__inicio' }, h('img', { class: 'avatar', src: safeUrl(a.avatar_static || a.avatar), alt: '', loading: 'lazy' })),
+    h('span', { class: 'ro-linha__inicio' }, h('img', { class: 'ro-avatar avatar', src: safeUrl(a.avatar_static || a.avatar), alt: '', loading: 'lazy' })),
     h('span', { class: 'ro-linha__corpo who' },
       h('span', { class: 'ro-linha__titulo name' }, nameNode(a)),
       h('span', { class: 'ro-linha__sub acct' }, '@' + a.acct)));
@@ -2464,7 +2464,7 @@ function accountRowEl(s) {
   const acc = s.account;
   return h('button', { type: 'button', class: `ro-linha acc-row${active ? ' active' : ''}`, 'aria-current': active ? 'true' : null,
     onclick: () => { if (active) { closeSheet(); return; } activate(s); } },
-    h('span', { class: 'ro-linha__inicio' }, h('img', { class: 'avatar', src: safeUrl(acc.avatar), alt: '' })),
+    h('span', { class: 'ro-linha__inicio' }, h('img', { class: 'ro-avatar avatar', src: safeUrl(acc.avatar), alt: '' })),
     h('span', { class: 'ro-linha__corpo' },
       h('span', { class: 'ro-linha__titulo' }, nameNode(acc)),
       h('span', { class: 'ro-linha__sub' }, `@${acc.acct}@${s.host}`)),
@@ -3408,7 +3408,7 @@ function suggestUpdate() {
     const box = $('#suggest');
     if (!items.length) { box.hidden = true; box.replaceChildren(); return; }
     box.replaceChildren(...items.map((it) => h('button', { type: 'button', class: 'sg-item', onclick: () => suggestPick(tok, it) },
-      it.img ? h('img', { class: it.round ? 'avatar' : 'emoji-img', src: safeUrl(it.img), alt: '' }) : null,
+      it.img ? h('img', { class: it.round ? 'ro-avatar avatar' : 'emoji-img', src: safeUrl(it.img), alt: '' }) : null,
       h('span', { class: 'sg-text' }, h('strong', {}, it.label), it.sub ? h('span', { class: 'muted small' }, it.sub) : null))));
     box.hidden = false;
     box.scrollLeft = 0;

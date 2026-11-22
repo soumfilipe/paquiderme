@@ -93,20 +93,6 @@ button[data-confirmando] { background: var(--danger); border-color: var(--danger
 }
 
 
-#fab {
-  position: fixed;
-  right: 16px;
-  bottom: calc(var(--tabbar-h) + var(--sab) + 16px);
-  width: 56px; height: 56px;
-  border-radius: 50%;
-  background: var(--accent);
-  color: var(--accent-ink);
-  font-size: 24px;
-  padding: 0;
-  border: 0;
-  box-shadow: 0 6px 20px rgb(0 0 0 / .35);
-  z-index: 11;
-}
 
 /* Publicações */
 .status {
@@ -115,7 +101,6 @@ button[data-confirmando] { background: var(--danger); border-color: var(--danger
 }
 .status .boost-note { color: var(--boost); font-size: 13px; margin-bottom: 6px; display: flex; align-items: center; gap: 6px; }
 .status header { display: flex; gap: 10px; align-items: center; }
-.status img.avatar { width: 44px; height: 44px; border-radius: 10px; flex: none; background: var(--surface-2); }
 .status .who { min-width: 0; flex: 1; }
 .status .name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .status .acct, .status time { color: var(--muted); font-size: 13px; }
@@ -227,7 +212,6 @@ dialog#composer::backdrop { background: rgb(0 0 0 / .55); }
 
 /* ---------- Ícones (Hugeicons) e microanimações ---------- */
 .ico { display: block; flex: none; }
-#fab { display: grid; place-items: center; }
 .actions button { display: inline-flex; align-items: center; gap: 6px; }
 .actions button:disabled { opacity: .4; }
 .actions .open { margin-left: auto; padding: 6px 10px; color: var(--muted); display: grid; place-items: center; }
@@ -351,7 +335,6 @@ img.emoji { height: 1.2em; width: auto; vertical-align: -0.25em; }
 .count-btn { background: none; border: 0; padding: 0; border-radius: 0; color: var(--muted); }
 
 .account-row { padding: 6px 16px; border-bottom: 1px solid var(--border); cursor: pointer; }
-.account-row .avatar { width: 44px; height: 44px; border-radius: 10px; flex: none; background: var(--surface-2); }
 .account-row .acct, .acc-row .ro-linha__sub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .account-row .name, .acc-row .ro-linha__titulo { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .notif .account-row { border-bottom: 0; }
@@ -414,7 +397,7 @@ dialog#composer { overscroll-behavior: contain; }
 .pinned-note { display: flex; align-items: center; gap: 6px; padding: 10px 16px 0; }
 .sheet-form { padding: 4px 12px 8px; display: flex; flex-direction: column; gap: 10px; }
 .sheet-text { width: 100%; resize: none; }
-.sheet-check { font-size: 14px; display: flex; gap: 8px; align-items: center; }
+.sheet-check { font-size: 14px; }
 
 /* Preferências e acessibilidade */
 html { -webkit-text-size-adjust: var(--text-adjust, 100%); text-size-adjust: var(--text-adjust, 100%); }
@@ -534,7 +517,7 @@ dialog#viewer::backdrop { background: #000; }
 .acc-list { display: flex; flex-direction: column; gap: 4px; }
 .acc-row { padding: 8px 10px; border: 1px solid transparent; border-radius: 12px; }
 .acc-row.active { background: var(--surface-2); border-color: var(--border); }
-.acc-row .avatar { width: 40px; height: 40px; flex: none; }
+.acc-row .avatar { width: 40px; height: 40px; }
 .bar-actions { display: inline-flex; gap: 2px; }
 #login-cancel { margin-top: 8px; }
 
@@ -591,7 +574,7 @@ body.has-dock #view { padding-bottom: calc(var(--tabbar-h) + var(--sab) + 96px);
 .suggest[hidden] { display: none; }
 .suggest::-webkit-scrollbar { display: none; }
 .sg-item { display: inline-flex; align-items: center; gap: 8px; flex: none; max-width: 80%; padding: 6px 12px 6px 8px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface-2); color: var(--text); min-height: 44px; }
-.sg-item .avatar { width: 30px; height: 30px; flex: none; }
+.sg-item .avatar { width: 30px; height: 30px; }
 .sg-item .emoji-img { width: 26px; height: 26px; flex: none; object-fit: contain; }
 .sg-text { display: flex; flex-direction: column; align-items: flex-start; min-width: 0; line-height: 1.15; }
 .sg-text > * { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
