@@ -6,7 +6,8 @@ import 'rochedo';
 import './style.css';
 import { estado, reiniciar } from './src/estado.svelte.js';
 import { registrar, canon, atualizar, esquecer, limpar as limparPublicacoes } from './src/publicacoes.svelte.js';
-import { desmontarIlhas, ilha, montar } from './src/ilhas.js';
+import { desmontarIlhas, ilha, montar, reativas } from './src/ilhas.js';
+import LinhaDoTempo from './src/telas/LinhaDoTempo.svelte';
 import Publicacao from './src/telas/Publicacao.svelte';
 import { SvelteMap } from 'svelte/reactivity';
 import Saude from './src/telas/Saude.svelte';
@@ -812,6 +813,17 @@ function moreButton(kind) {
   return h('button', { type: 'button', class: 'ro-botao more', onclick: () => loadList(kind, true) }, 'Carregar mais');
 }
 
+// Lista de publicações em Svelte: reage sozinha a carregamentos e novas publicações (sem render() global).
+function timelineView(view, kind, { readonly = false, host = null, ocultar = null } = {}) {
+  publicacaoCtx ||= mkPublicacaoCtx();
+  reativas.set(kind, getList(kind));
+  ilha(view, LinhaDoTempo, {
+    st: getList(kind), readonly, host, ocultar, c: publicacaoCtx,
+    aoMais: () => loadList(kind, true),
+    aoTentar: () => loadList(kind, getList(kind).items.length > 0),
+  });
+}
+
 /* ----- Conversas (threads) ----- */
 
 function openThread(status, host = null) {
@@ -1338,7 +1350,7 @@ function liveHome(s) {
   if (!st.items.length && !st.loaded) return; // ainda nem carregou: o carregamento já traz
   if (st.items.some((x) => x.id === s.id) || state.newPosts.some((x) => x.id === s.id)) return;
   const viewing = state.tab === 'home' && !state.homeList && state.profiles.length === 0;
-  if (viewing && atTop()) { st.items.unshift(s); render(); return; }
+  if (viewing && atTop()) { st.items.unshift(s); if (reativas.get('home') !== st) render(); return; }
   state.newPosts.unshift(s);
   updatePill();
 }
@@ -1513,7 +1525,7 @@ function homeView(view) {
     chip('', 'Início'),
     ...L.items.map((l) => chip(l.id, l.title)),
     h('button', { type: 'button', class: 'with-icon', 'aria-label': 'Gerenciar listas', onclick: openListsManage }, svgIcon('settings', 16), 'Listas')));
-  renderList(view, state.homeList ? 'list' : 'home', (s) => statusEl(s));
+  timelineView(view, state.homeList ? 'list' : 'home');
 }
 
 function setHomeList(id) {
@@ -2246,7 +2258,7 @@ function profileView(view, p) {
     p.pinned.forEach((s) => view.append(h('div', { class: 'pinned' },
       h('div', { class: 'pinned-note muted small' }, svgIcon('pin', 14), ' Fixada'), statusEl(s))));
   }
-  renderList(view, 'p:' + p.seg, (s) => (p.seg === 'posts' && pinnedIds.has(s.id) ? null : statusEl(s)));
+  timelineView(view, 'p:' + p.seg, { ocultar: (s) => p.seg === 'posts' && pinnedIds.has(s.id) });
 }
 
 
@@ -2324,7 +2336,7 @@ function trendsView(view) {
 function otherView(view) {
   const ex = state.explore;
   ilha(view, OutraInstancia, { host: ex.otherHost, salvas: store.get('otherHosts', []), aoIr: goOther });
-  if (ex.otherHost) renderList(view, 'other', (s) => statusEl(s, { readonly: true, host: ex.otherHost }));
+  if (ex.otherHost) timelineView(view, 'other', { readonly: true, host: ex.otherHost });
 }
 
 /* ----- Busca ----- */
@@ -2433,7 +2445,7 @@ function exploreView(view) {
       h('button', { type: 'button', class: 'ro-botao ro-botao--quieto ro-botao--icone icon-btn', 'aria-label': 'Voltar', onclick: closeTag }, svgIcon('back', 22)),
       h('strong', {}, '#' + ex.tag),
       ex.tagFollowing === null ? null : h('button', { type: 'button', class: 'chip ro-chip push-right', 'aria-pressed': ex.tagFollowing ? 'true' : 'false', onclick: () => toggleFollowTag(ex.tag) }, ex.tagFollowing ? 'Seguindo' : 'Seguir')));
-    renderList(view, 'tag', (s) => statusEl(s));
+    timelineView(view, 'tag');
     return;
   }
   if (state.search.active) { searchView(view); return; }
@@ -2442,7 +2454,7 @@ function exploreView(view) {
   if (ex.seg === 'trends') trendsView(view);
   else if (ex.seg === 'tags') tagsView(view);
   else if (ex.seg === 'other') otherView(view);
-  else renderList(view, ex.seg, (s) => statusEl(s));
+  else timelineView(view, ex.seg);
 }
 
 function setSeg(id) {
@@ -2588,7 +2600,7 @@ async function loadList(kind, append = false) {
   st.loading = true;
   st.error = null;
   if (!append) busy(+1);
-  render();
+  if (reativas.get(kind) !== st) render();
   try {
     const params = { limit: 30, ...spec.extra };
     if (append) {
@@ -2615,7 +2627,7 @@ async function loadList(kind, append = false) {
   } finally {
     st.loading = false;
     if (!append) busy(-1);
-    if (session) render();
+    if (session && reativas.get(kind) !== getList(kind)) render();
     if (session && kind === 'home' && !append && !st.error) setTimeout(checkHomeMarker, 300);
   }
 }
