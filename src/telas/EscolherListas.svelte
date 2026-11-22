@@ -1,14 +1,14 @@
 <script>
 	import { Icone } from 'rochedo/svelte';
-	import NoDom from './NoDom.svelte';
+	import NovaLista from './NovaLista.svelte';
 	import Estado from './Estado.svelte';
 
 	// Em quais listas uma conta aparece. `e`: { member (Set), loaded, error }; `listas`: state.lists.items.
-	// criarForm() devolve o formulário de nova lista (feito em JS); alternar(lista, estavaNela, botao) chama a API.
-	let { e, listas, criarForm, alternar, aoRecarregar } = $props();
+	// aoCriar(titulo) cria a lista; alternar(lista, estavaNela, botao) chama a API.
+	let { e, listas, aoCriar, alternar, aoRecarregar } = $props();
 </script>
 
-<NoDom no={criarForm()} />
+<NovaLista {aoCriar} />
 {#if e.error}
 	<Estado erro={e.error} aoTentar={aoRecarregar} />
 {:else if !e.loaded}

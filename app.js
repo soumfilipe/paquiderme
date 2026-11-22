@@ -10,6 +10,7 @@ import Filtros from './src/telas/Filtros.svelte';
 import Agendadas from './src/telas/Agendadas.svelte';
 import ContasEntrada from './src/telas/ContasEntrada.svelte';
 import Membros from './src/telas/Membros.svelte';
+import Listas from './src/telas/Listas.svelte';
 import EscolherListas from './src/telas/EscolherListas.svelte';
 import AvisoAtualizacao from './src/telas/AvisoAtualizacao.svelte';
 import { iniciarAtualizacao } from './src/atualizacao.svelte.js';
@@ -1647,56 +1648,34 @@ async function createList(title) {
   } catch (e) { toast(e.message); }
 }
 
-function createListForm() {
-  const input = h('input', { placeholder: 'Nome da nova lista', maxlength: '100', 'aria-label': 'Nome da nova lista' });
-  return h('form', { class: 'inst-form', onsubmit: async (ev) => { ev.preventDefault(); await createList(input.value); input.value = ''; } },
-    input, h('button', { type: 'submit', class: 'ro-botao ro-botao--principal' }, 'Criar'));
-}
-
 function openListsManage() {
   pushEntry({ type: 'lists', editing: null, confirm: null, reload: () => loadLists() });
 }
 
 function listsManageView(view, e) {
   view.append(profileBar('Listas', closeProfile));
-  view.append(createListForm());
-  const L = state.lists;
-  if (L.error) view.append(errorState(L.error, () => loadLists()));
-  else if (L.loading && !L.loaded) view.append(loadingState('Carregando…'));
-  else if (!L.items.length) view.append(emptyState('Você ainda não tem listas. Crie uma acima e adicione contas que você segue.'));
-  L.items.forEach((l) => view.append(listRow(l, e)));
-}
-
-function listRow(l, e) {
-  if (e.editing === l.id) {
-    const input = h('input', { value: l.title, maxlength: '100', 'aria-label': 'Novo nome da lista' });
-    return h('form', { class: 'list-row', onsubmit: async (ev) => {
-      ev.preventDefault();
-      const title = input.value.trim();
-      if (!title) return;
+  ilha(view, Listas, {
+    L: state.lists, e, aoCriar: createList, aoRecarregar: () => loadLists(),
+    aoAbrir: (l) => { state.profiles = []; setHomeList(l.id); },
+    aoMembros: openMembers,
+    aoEditar: (id) => { e.editing = id; render(); },
+    aoRenomear: async (l, title) => {
       try {
         const u = await api(`/api/v1/lists/${l.id}`, { method: 'PUT', body: { title } });
         l.title = u.title;
         e.editing = null;
         render();
       } catch (err) { toast(err.message); }
-    } },
-    input,
-    h('button', { type: 'submit', class: 'ro-botao ro-botao--principal' }, 'Salvar'),
-    h('button', { class: 'ro-botao', type: 'button', onclick: () => { e.editing = null; render(); } }, 'Cancelar'));
-  }
-  return h('div', { class: 'list-row' },
-    h('button', { type: 'button', class: 'list-title link', onclick: () => { state.profiles = []; setHomeList(l.id); } }, l.title),
-    h('button', { class: 'ro-botao', type: 'button', onclick: () => openMembers(l) }, 'Membros'),
-    h('button', { class: 'ro-botao', type: 'button', onclick: () => { e.editing = l.id; render(); } }, 'Renomear'),
-    dangerBtn('Excluir', 'Confirmar', async () => {
+    },
+    aoExcluir: async (l) => {
       try {
         await api(`/api/v1/lists/${l.id}`, { method: 'DELETE' });
         state.lists.items = state.lists.items.filter((x) => x.id !== l.id);
         if (state.homeList === l.id) { state.homeList = null; state.listTl = mkList(); }
         render();
       } catch (err) { toast(err.message); }
-    }));
+    },
+  });
 }
 
 function openAccountsEntry(title, path, undoVerb, undoLabel) {
@@ -1824,7 +1803,7 @@ function openListPicker(account) {
 function listPickView(view, e) {
   view.append(profileBar(`Listas de @${e.account.acct}`, closeProfile));
   ilha(view, EscolherListas, {
-    e, listas: state.lists.items, criarForm: createListForm, aoRecarregar: () => e.reload(),
+    e, listas: state.lists.items, aoCriar: createList, aoRecarregar: () => e.reload(),
     alternar: async (l, nela, btn) => {
       btn.disabled = true;
       try {
