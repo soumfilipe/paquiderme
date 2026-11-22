@@ -4,6 +4,8 @@ import {
 } from './lib.js';
 import 'rochedo';
 import './style.css';
+import { desmontarIlhas, ilha } from './src/ilhas.js';
+import Saude from './src/telas/Saude.svelte';
 import { aviso } from 'rochedo/aviso.js';
 import { confirmar } from 'rochedo/confirmar.js';
 import { abrirFolha } from 'rochedo/folha.js';
@@ -1998,17 +2000,7 @@ async function runHealth(e) {
 
 function healthView(view, e) {
   view.append(profileBar('Status da instância', closeProfile));
-  if (!e.checks) { view.append(loadingState('Verificando…')); return; }
-  const worst = e.checks.some((c) => c.state === 'bad') ? 'bad' : e.checks.some((c) => c.state === 'warn') ? 'warn' : 'ok';
-  const head = { ok: 'Tudo funcionando', warn: 'Funcionando com lentidão ou ressalvas', bad: 'Há problemas' }[worst];
-  view.append(h('div', { class: `health-head ${worst}` }, h('span', { class: 'health-dot' }), h('strong', {}, head)));
-  e.checks.forEach((c) => view.append(h('div', { class: 'health-row' },
-    h('span', { class: `health-dot ${c.state}` }),
-    h('div', {}, h('strong', {}, c.name), h('div', {}, c.text), c.detail ? h('div', { class: 'muted small' }, c.detail) : null))));
-  view.append(h('div', { class: 'health-foot' },
-    h('span', { class: 'muted small' }, `Verificado às ${e.at.toLocaleTimeString('pt-BR', { timeStyle: 'short' })}`),
-    h('button', { class: 'ro-botao', type: 'button', onclick: () => e.reload() }, 'Verificar de novo'),
-    h('a', { class: 'link', href: `https://${session.host}/about`, target: '_blank', rel: 'noopener noreferrer' }, 'Sobre a instância')));
+  ilha(view, Saude, { e, host: session.host });
 }
 
 function openScheduled() {
@@ -2900,6 +2892,7 @@ function render() {
   const top0 = topEntry();
   // não reconstrói o formulário de edição enquanto a pessoa digita (perderia o foco e o teclado)
   if (top0 && (top0.type === 'editprofile' || top0.type === 'filteredit') && top0.built && view.contains(document.activeElement) && document.activeElement.matches('input, textarea')) return;
+  desmontarIlhas();
   view.replaceChildren();
   const top = topEntry();
   const prof = activeProfile();
