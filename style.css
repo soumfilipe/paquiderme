@@ -274,10 +274,8 @@ dialog#composer::backdrop { background: rgb(0 0 0 / .55); }
   -webkit-backdrop-filter: blur(14px);
   border-bottom: 1px solid var(--border);
 }
-/* abas: trilho e itens vêm do Rochedo (.ro-abas); aqui só o ajuste de largura e o estado ativo (.active) */
+/* abas: trilho, itens e aba atual vêm do Rochedo (.ro-abas); aqui só o ajuste de largura */
 .seg-bar .tabs { width: max-content; }
-.seg-bar .tabs .chip { min-height: 36px; padding: 0 16px; border: 0; background: transparent; font-size: 13px; font-weight: 700; color: var(--muted); }
-.seg-bar .tabs .chip.active { background: var(--accent); color: var(--accent-ink); }
 .section { margin: 16px 16px 4px; }
 
 button.tag-row { padding: 6px 16px; border-bottom: 1px solid var(--border); border-radius: 0; }
@@ -604,9 +602,9 @@ body.has-dock #view { padding-bottom: calc(var(--tabbar-h) + var(--sab) + 96px);
 /* ===== Design system do SDV (brandbook): Bricolage Grotesque + JetBrains Mono, botões em pílula, cartões de 22 px ===== */
 h1, h2, h3, .profile-name, .titulo { font-family: var(--font-title); font-weight: 800; letter-spacing: -0.02em; }
 /* rótulos: mono, caixa alta, 12 px */
-.badge, .card-site, .seg-bar .chip, .chip, .when time, .status header time, .notif-kind, .count { font-family: var(--font-mono); }
+.badge, .card-site, .chip, .when time, .status header time, .notif-kind, .count { font-family: var(--font-mono); }
 .badge { text-transform: uppercase; font-size: 11px; letter-spacing: 0.02em; border-radius: var(--radius-pill); }
-.chip, button.primary, .seg-bar .chip { border-radius: var(--radius-pill); font-weight: 700; }
+.chip, button.primary { border-radius: var(--radius-pill); font-weight: 700; }
 button { border-radius: var(--radius-pill); }
 button.icon-btn, .tool, .more-btn, .sg-item { border-radius: var(--radius-pill); }
 .link-card, .account-card, .poll, .filter-row, .acc-row.active { border-radius: var(--radius-card); }
