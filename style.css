@@ -324,7 +324,7 @@ img.emoji { height: 1.2em; width: auto; vertical-align: -0.25em; }
 .field dt { color: var(--muted); }
 .field dd { margin: 0; overflow-wrap: anywhere; display: flex; align-items: center; gap: 6px; }
 .field dd.verified { background: color-mix(in srgb, var(--boost) 12%, transparent); }
-.field dd.verified .ico { color: var(--boost); }
+.field dd.verified .ico, .field dd.verified .ro-icone { color: var(--boost); }
 
 .counts { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 14px; color: var(--muted); }
 .counts strong { color: var(--text); }

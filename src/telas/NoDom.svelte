@@ -7,4 +7,4 @@
 	});
 </script>
 
-<span bind:this={alvo}></span>
+<span bind:this={alvo} style="display: contents"></span>
