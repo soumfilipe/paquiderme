@@ -7,6 +7,9 @@ import './style.css';
 import { desmontarIlhas, ilha } from './src/ilhas.js';
 import Saude from './src/telas/Saude.svelte';
 import Filtros from './src/telas/Filtros.svelte';
+import HashtagsSeguidas from './src/telas/HashtagsSeguidas.svelte';
+import OutraInstancia from './src/telas/OutraInstancia.svelte';
+import BuscaTipos from './src/telas/BuscaTipos.svelte';
 import FiltroEdicao from './src/telas/FiltroEdicao.svelte';
 import Agendadas from './src/telas/Agendadas.svelte';
 import ContasEntrada from './src/telas/ContasEntrada.svelte';
@@ -2409,19 +2412,7 @@ function trendsView(view) {
 
 function otherView(view) {
   const ex = state.explore;
-  const input = h('input', {
-    placeholder: 'ex.: mastodon.social', value: ex.otherHost, autocapitalize: 'none', autocorrect: 'off',
-    spellcheck: 'false', inputmode: 'url', 'aria-label': 'Endereço da instância',
-  });
-  view.append(h('form', { class: 'inst-form', onsubmit: (e) => { e.preventDefault(); goOther(input.value); } },
-    input, h('button', { type: 'submit', class: 'ro-botao ro-botao--principal' }, 'Ver')));
-  const saved = store.get('otherHosts', []);
-  if (saved.length) {
-    view.append(h('div', { class: 'hosts' }, ...saved.map((host) =>
-      h('button', { type: 'button', class: 'chip ro-chip', 'aria-pressed': host === ex.otherHost ? 'true' : 'false', onclick: () => goOther(host) }, host))));
-  }
-  view.append(h('p', { class: 'note muted small' },
-    'Mostra a timeline local pública da instância escolhida, só para leitura. Para interagir, abra o original.'));
+  ilha(view, OutraInstancia, { host: ex.otherHost, salvas: store.get('otherHosts', []), aoIr: goOther });
   if (ex.otherHost) renderList(view, 'other', (s) => statusEl(s, { readonly: true, host: ex.otherHost }));
 }
 
@@ -2503,9 +2494,7 @@ function bindDock() {
 
 function searchView(view) {
   const s = state.search;
-  view.append(h('div', { class: 'hosts', role: 'group', 'aria-label': 'Tipo de resultado' }, ...SEARCH_TYPES.map(([id, label]) =>
-    h('button', { type: 'button', class: 'chip ro-chip', 'aria-pressed': s.type === id ? 'true' : 'false',
-      onclick: () => { s.type = id; s.res = null; if (s.q) runSearch(); else render(); } }, label))));
+  ilha(view, BuscaTipos, { tipos: SEARCH_TYPES, atual: s.type, aoEscolher: (id) => { s.type = id; s.res = null; if (s.q) runSearch(); else render(); } });
   if (s.error) { view.append(errorState(s.error, () => runSearch())); return; }
   if (s.loading && !s.res) { view.append(emptyState('Buscando…')); return; }
   if (!s.res) return;
@@ -2588,14 +2577,12 @@ async function loadFollowedTags() {
 
 function tagsView(view) {
   const f = state.followedTags;
-  if (f.error) { view.append(errorState(f.error, loadFollowedTags)); return; }
-  if (!f.loaded) { view.append(loadingState('Carregando…')); return; }
-  if (!f.items.length) { view.append(emptyState('Você ainda não segue hashtags. Abra uma hashtag e toque em Seguir: as publicações dela passam a aparecer no Início.')); return; }
-  f.items.forEach((t) => view.append(h('div', { class: 'tag-row' },
-    h('button', { type: 'button', class: 'tag-name', onclick: () => openTag(t.name) }, '#' + t.name),
-    h('button', { class: 'ro-botao', type: 'button', onclick: async () => {
-      try { await api(`/api/v1/tags/${encodeURIComponent(t.name)}/unfollow`, { method: 'POST' }); f.items = f.items.filter((x) => x.name !== t.name); render(); } catch (e) { toast(e.message); }
-    } }, 'Deixar de seguir'))));
+  ilha(view, HashtagsSeguidas, {
+    f, aoTentar: loadFollowedTags, aoAbrir: openTag,
+    aoDeixar: async (name) => {
+      try { await api(`/api/v1/tags/${encodeURIComponent(name)}/unfollow`, { method: 'POST' }); f.items = f.items.filter((x) => x.name !== name); render(); } catch (e) { toast(e.message); }
+    },
+  });
 }
 
 function closeTag() {
