@@ -11,6 +11,7 @@ import Agendadas from './src/telas/Agendadas.svelte';
 import AvisoAtualizacao from './src/telas/AvisoAtualizacao.svelte';
 import { iniciarAtualizacao } from './src/atualizacao.svelte.js';
 import { mount } from 'svelte';
+import Configuracoes from './src/telas/Configuracoes.svelte';
 import { aviso } from 'rochedo/aviso.js';
 import { confirmar } from 'rochedo/confirmar.js';
 import { abrirFolha } from 'rochedo/folha.js';
@@ -1367,36 +1368,6 @@ function setPref(key, value) {
   render();
 }
 
-function prefChoice(label, key, options) {
-  return h('div', { class: 'pref-group', role: 'group', 'aria-label': label },
-    h('span', { class: 'muted small' }, label),
-    h('div', { class: 'seg-row' }, ...options.map(([v, text]) =>
-      h('button', { type: 'button', class: 'chip ro-chip', 'aria-pressed': prefs[key] === v ? 'true' : 'false', onclick: () => setPref(key, v) }, text))));
-}
-
-/* Linha de ajuste com interruptor do Rochedo: o botão inteiro é o alvo de toque, o interruptor é só o desenho. */
-function switchRow(label, on, onclick) {
-  return h('button', { type: 'button', class: `pick-row switch-row${on ? ' on' : ''}`, role: 'switch', 'aria-checked': on ? 'true' : 'false', onclick },
-    h('span', {}, label), h('span', { class: 'ro-interruptor', 'aria-checked': on ? 'true' : 'false', 'aria-hidden': 'true' }));
-}
-
-function prefSwitch(label, key) {
-  const on = !!prefs[key];
-  return switchRow(label, on, () => setPref(key, !on));
-}
-
-function prefsSection() {
-  return h('div', { class: 'account-card' },
-    h('strong', {}, 'Aparência e comportamento'),
-    prefChoice('Tema', 'theme', [['auto', 'Automático'], ['light', 'Claro'], ['dark', 'Escuro']]),
-    prefChoice('Tamanho do texto', 'textSize', [[100, 'Padrão'], [112, 'Grande'], [125, 'Maior'], [140, 'Máximo']]),
-    prefChoice('Animações', 'motion', [['auto', 'Padrão do sistema'], ['reduce', 'Reduzir']]),
-    prefChoice('Visibilidade ao publicar', 'defaultVis', [['', 'Lembrar a última'], ['public', 'Pública'], ['unlisted', 'Não listada'], ['private', 'Só seguidores']]),
-    prefSwitch('Mostrar mídia sensível sem desfocar', 'showSensitive'),
-    prefSwitch('Abrir avisos de conteúdo já expandidos', 'openCw'),
-    prefSwitch('Receber publicações e avisos em tempo real', 'live'));
-}
-
 /* ---------- Tempo real (streaming) ---------- */
 
 const live = { ws: null, timer: null, tries: 0, gen: 0, base: '', query: false, wasHidden: false };
@@ -1574,32 +1545,6 @@ async function setPushAlert(key, on) {
     ps.sub = await api('/api/v1/push/subscription', { method: 'PUT', body: { data: { alerts } } });
   } catch (e) { toast(e.message); }
   render();
-}
-
-function pushSection() {
-  const ps = pushState;
-  const box = h('div', { class: 'account-card' }, h('strong', {}, 'Avisos no aparelho'));
-  if (!ps.loaded || ps.loading) { box.append(h('p', { class: 'muted small' }, 'Verificando…')); return box; }
-  if (!ps.supported) {
-    box.append(h('p', { class: 'muted small' }, 'Este navegador não oferece avisos push. No iPhone, adicione o Paquiderme à Tela de Início (iOS 16.4 ou mais novo) e abra por lá.'));
-    return box;
-  }
-  if (/iPhone|iPad/.test(navigator.userAgent) && !ps.standalone) {
-    box.append(h('p', { class: 'muted small' }, 'No iPhone os avisos só funcionam no app instalado: toque em Compartilhar › Adicionar à Tela de Início e abra por lá.'));
-    return box;
-  }
-  if (ps.sub) {
-    PUSH_ALERTS.forEach(([k, label]) => {
-      const on = !!(ps.sub.alerts && ps.sub.alerts[k]);
-      box.append(switchRow(label, on, () => setPushAlert(k, !on)));
-    });
-    box.append(h('button', { class: 'ro-botao', type: 'button', onclick: disablePush }, 'Desativar avisos'));
-  } else {
-    box.append(h('p', { class: 'muted small' }, 'Receba menções e novos seguidores mesmo com o app fechado. A instância envia direto ao seu aparelho; o Paquiderme não tem servidor.'));
-    box.append(h('button', { type: 'button', class: 'ro-botao ro-botao--principal', onclick: enablePush }, 'Ativar avisos'));
-  }
-  if (ps.error) box.append(h('p', { class: 'error ro-faixa ro-faixa--erro', role: 'alert' }, ps.error));
-  return box;
 }
 
 /* ----- Listas ----- */
@@ -2465,40 +2410,22 @@ function accountsSheet() {
   ], h('div', { class: 'acc-list' }, ...sessions().map(accountRowEl)));
 }
 
-function shareSection() {
-  const base = `${APP_URL}?text=`;
-  return h('div', { class: 'account-card' },
-    h('strong', {}, 'Compartilhar para o Paquiderme'),
-    h('p', { class: 'muted small' }, 'No Android, instalado o app, ele aparece no menu Compartilhar. No iPhone o sistema ainda não permite isso a apps da tela de início; dá para usar um atalho do app Atalhos:'),
-    h('ol', { class: 'muted small share-steps' },
-      h('li', {}, 'No Atalhos, crie um atalho novo e ative “Mostrar na Folha de Compartilhamento”.'),
-      h('li', {}, 'Adicione a ação “Codificar URL” (entrada: Entrada do Atalho) e depois “Abrir URLs”.'),
-      h('li', {}, 'Na URL, use o endereço abaixo seguido do resultado da codificação.')),
-    h('code', { class: 'share-url' }, base),
-    h('button', { type: 'button', class: 'ro-botao', onclick: async () => { try { await navigator.clipboard.writeText(base); toast('Endereço copiado'); } catch { toast('Não consegui copiar'); } } }, svgIcon('copy', 18), 'Copiar endereço'),
-    h('p', { class: 'muted small' }, 'Atenção: no iPhone “Abrir URLs” abre o Safari, não o app instalado. Nesse caso o login do Safari é separado do app.'));
-}
-
 function settingsView(view) {
   view.append(profileBar('Configurações', () => { state.settingsOpen = false; window.scrollTo(0, 0); render(); }));
-  view.append(h('div', { class: 'account-card' },
-    h('strong', {}, 'Contas'),
-    h('div', { class: 'acc-list' }, ...sessions().map(accountRowEl)),
-    h('button', { type: 'button', class: 'ro-botao', onclick: addAccount }, svgIcon('user-add', 18), 'Adicionar conta'),
-    h('a', { href: `https://${session.host}/settings/profile`, target: '_blank', rel: 'noopener noreferrer' }, 'Editar perfil e preferências na instância'),
-    h('button', { type: 'button', class: 'ro-botao', onclick: updateApp }, svgIcon('refresh', 18), 'Atualizar o app (limpar cache)'),
-    h('button', { type: 'button', class: 'ro-botao', onclick: () => logout() }, svgIcon('logout', 18), sessions().length > 1 ? 'Sair desta conta' : 'Sair'),
-    h('p', { class: 'muted small' }, `${APP_NAME} · cliente estático, sem servidor próprio. O token fica só neste aparelho.`)));
-  view.append(prefsSection());
-  view.append(pushSection());
-  view.append(shareSection());
-  view.append(h('div', { class: 'account-card' },
-    h('strong', {}, 'Conta e moderação'),
-    h('button', { type: 'button', class: 'ro-botao', onclick: openFilters }, svgIcon('filter', 18), 'Filtros de palavras'),
-    h('button', { type: 'button', class: 'ro-botao', onclick: openScheduled }, svgIcon('clock', 18), 'Publicações agendadas'),
-    h('button', { type: 'button', class: 'ro-botao', onclick: openHealth }, svgIcon('refresh', 18), 'Status da instância'),
-    h('button', { type: 'button', class: 'ro-botao', onclick: () => openAccountsEntry('Contas silenciadas', '/api/v1/mutes', 'unmute', 'Reativar') }, svgIcon('mute', 18), 'Contas silenciadas'),
-    h('button', { type: 'button', class: 'ro-botao', onclick: () => openAccountsEntry('Contas bloqueadas', '/api/v1/blocks', 'unblock', 'Desbloquear') }, svgIcon('block', 18), 'Contas bloqueadas')));
+  const abrir = {
+    filtros: openFilters, agendadas: openScheduled, saude: openHealth,
+    silenciadas: () => openAccountsEntry('Contas silenciadas', '/api/v1/mutes', 'unmute', 'Reativar'),
+    bloqueadas: () => openAccountsEntry('Contas bloqueadas', '/api/v1/blocks', 'unblock', 'Desbloquear'),
+  };
+  ilha(view, Configuracoes, { c: {
+    sessoes: sessions(), ehAtiva: (s) => session && sameAcc(s, session), trocarConta: activate,
+    prefs, push: pushState, alertasPush: PUSH_ALERTS, appNome: APP_NAME, appUrl: APP_URL, host: session.host,
+    nomeNo: nameNode, url: safeUrl,
+    definirPref: setPref, setPushAlert, ativarPush: enablePush, desativarPush: disablePush,
+    adicionarConta: addAccount, atualizarApp: updateApp, sair: () => logout(),
+    copiar: async (t) => { try { await navigator.clipboard.writeText(t); toast('Endereço copiado'); } catch { toast('Não consegui copiar'); } },
+    abrir: (nome) => abrir[nome](),
+  } });
 }
 
 function profileView(view, p) {
