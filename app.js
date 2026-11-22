@@ -1831,7 +1831,7 @@ function membersView(view, e) {
 
   const memberIds = new Set(e.items.map((m) => m.id));
   if (e.results) {
-    view.append(h('h3', { class: 'section' }, 'Resultados'));
+    view.append(h('h3', { class: 'ro-rotulo section' }, 'Resultados'));
     if (!e.results.length) view.append(emptyState('Ninguém encontrado entre quem você segue.'));
     e.results.forEach((a) => view.append(personRow(a, memberIds.has(a.id) ? 'Na lista' : 'Adicionar', async (btn) => {
       if (memberIds.has(a.id)) return;
@@ -1843,7 +1843,7 @@ function membersView(view, e) {
       } catch (err) { toast(err.message); btn.disabled = false; }
     })));
   }
-  view.append(h('h3', { class: 'section' }, `Membros${e.loaded ? ` (${e.items.length})` : ''}`));
+  view.append(h('h3', { class: 'ro-rotulo section' }, `Membros${e.loaded ? ` (${e.items.length})` : ''}`));
   if (e.error) view.append(errorState(e.error, () => loadMembers(e)));
   else if (e.loading && !e.loaded) view.append(loadingState('Carregando…'));
   else if (!e.items.length) view.append(emptyState('Lista vazia. Busque acima uma conta que você segue.'));
@@ -2453,9 +2453,9 @@ function followBtn(p) {
 }
 
 function profileBar(title, onBack, extra) {
-  return h('div', { class: 'tag-head profile-bar' },
+  return h('header', { class: 'ro-cabecalho ro-cabecalho--barra profile-bar' },
     onBack ? h('button', { type: 'button', class: 'ro-botao ro-botao--quieto ro-botao--icone icon-btn', 'aria-label': 'Voltar', onclick: onBack }, svgIcon('back', 22)) : null,
-    h('strong', { class: 'profile-title' }, title),
+    h('strong', { class: 'ro-cabecalho__titulo' }, title),
     extra);
 }
 
@@ -2649,18 +2649,18 @@ function trendsView(view) {
       try { await api(`/api/v1/announcements/${n.id}/dismiss`, { method: 'POST' }); t.notices = t.notices.filter((x) => x.id !== n.id); render(); } catch (e) { toast(e.message); }
     } }, 'Dispensar'))));
   if (t.people.length) {
-    view.append(h('h3', { class: 'section' }, 'Sugestões de contas'));
+    view.append(h('h3', { class: 'ro-rotulo section' }, 'Sugestões de contas'));
     t.people.forEach((p) => { if (p.account) view.append(accountRow(p.account)); });
   }
   if (t.links.length) {
-    view.append(h('h3', { class: 'section' }, 'Links em alta'));
+    view.append(h('h3', { class: 'ro-rotulo section' }, 'Links em alta'));
     t.links.forEach((l) => { const c = cardEl(l); if (c) view.append(h('div', { class: 'trend-link' }, c)); });
   }
-  view.append(h('h3', { class: 'section' }, 'Hashtags em alta'));
+  view.append(h('h3', { class: 'ro-rotulo section' }, 'Hashtags em alta'));
   if (!t.tags.length) view.append(emptyState('Nenhuma hashtag em alta agora.'));
   t.tags.forEach((tag) => view.append(tagRow(tag)));
   if (t.statuses.length) {
-    view.append(h('h3', { class: 'section' }, 'Publicações em alta'));
+    view.append(h('h3', { class: 'ro-rotulo section' }, 'Publicações em alta'));
     t.statuses.forEach((st) => view.append(statusEl(st)));
   }
 }
@@ -2770,15 +2770,15 @@ function searchView(view) {
   const { accounts, hashtags, statuses } = s.res;
   if (!accounts.length && !hashtags.length && !statuses.length) { view.append(emptyState('Nada encontrado.')); return; }
   if (accounts.length) {
-    if (!s.type) view.append(h('h3', { class: 'section' }, 'Contas'));
+    if (!s.type) view.append(h('h3', { class: 'ro-rotulo section' }, 'Contas'));
     accounts.forEach((a) => view.append(accountRow(a)));
   }
   if (hashtags.length) {
-    if (!s.type) view.append(h('h3', { class: 'section' }, 'Hashtags'));
+    if (!s.type) view.append(h('h3', { class: 'ro-rotulo section' }, 'Hashtags'));
     hashtags.forEach((t) => view.append(tagRow(t)));
   }
   if (statuses.length) {
-    if (!s.type) view.append(h('h3', { class: 'section' }, 'Publicações'));
+    if (!s.type) view.append(h('h3', { class: 'ro-rotulo section' }, 'Publicações'));
     statuses.forEach((st) => view.append(statusEl(st)));
   }
   if (s.type && s.more) view.append(h('button', { type: 'button', class: 'ro-botao more', onclick: () => runSearch(true) }, s.loading ? 'Carregando…' : 'Carregar mais'));
