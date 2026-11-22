@@ -31,3 +31,7 @@ Streaming por WebSocket, push (Web Push direto do Mastodon), perfis, busca, envi
 
 ## Créditos
 Ícones: [Hugeicons](https://hugeicons.com) (versão gratuita, licença MIT, em `brand/HUGEICONS-LICENSE.md`), as mesmas formas de [animate-ui.com/docs/icons/hugeicons](https://animate-ui.com/docs/icons/hugeicons). As animações são em CSS (`style.css`).
+
+## Design system
+
+Tokens, fontes, ícones e abas vêm do [Rochedo](https://github.com/soumfilipe/rochedo), copiados para `rochedo/`. Para atualizar: `scripts/sync-rochedo.sh vX.Y.Z`, depois subir `CACHE` em `sw.js`. O `style.css` só aliasa as variáveis antigas (`--bg`, `--accent`…) para `--ro-*`.

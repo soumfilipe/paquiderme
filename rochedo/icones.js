@@ -1,7 +1,7 @@
 // Ícones: Hugeicons (versão gratuita, licença MIT) — https://hugeicons.com
 // Formas extraídas de @hugeicons/core-free-icons, as mesmas usadas por animate-ui.com/docs/icons/hugeicons.
-// Gerado por script; as animações ficam em style.css.
-export const ICONS = {
+// Gerado por script (ver scripts/ no repositório do Paquiderme); para trocar um ícone, regere o mapa.
+export const ICONES = {
  "home": [
   [
    "path",
@@ -1149,3 +1149,22 @@ export const ICONS = {
   ]
  ]
 };
+
+const SVG_NS = 'http://www.w3.org/2000/svg';
+
+/** Cria um <svg> do ícone `nome` (grade de 24 px, traço de 1,5 px, cor = currentColor). */
+export function icone(nome, tamanho = 22) {
+  const svg = document.createElementNS(SVG_NS, 'svg');
+  svg.setAttribute('viewBox', '0 0 24 24');
+  svg.setAttribute('width', String(tamanho));
+  svg.setAttribute('height', String(tamanho));
+  svg.setAttribute('fill', 'none');
+  svg.setAttribute('aria-hidden', 'true');
+  svg.setAttribute('class', 'ro-icone');
+  for (const [tag, attrs] of ICONES[nome] || []) {
+    const el = document.createElementNS(SVG_NS, tag);
+    for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
+    svg.append(el);
+  }
+  return svg;
+}

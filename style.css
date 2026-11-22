@@ -1,50 +1,25 @@
 :root {
-  --bg: #0b0a10;
-  --surface: #17151f;
-  --surface-2: #211e2c;
-  --text: #f4f1fa;
-  --muted: #8d88a0;
-  --accent: #b994ff;
-  --accent-ink: #0b0a10;
-  --border: #2a2735;
-  --danger: #ff7aa8;
-  --font-title: 'Bricolage Grotesque', system-ui, sans-serif;
-  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
-  --radius-card: 22px;
-  --radius-field: 14px;
-  --radius-pill: 999px;
+  /* Tokens vêm do Rochedo (rochedo/rochedo.css); aqui só os apelidos que o app já usa. */
+  --bg: var(--ro-fundo);
+  --surface: var(--ro-superficie);
+  --surface-2: var(--ro-superficie-2);
+  --text: var(--ro-texto);
+  --muted: var(--ro-apoio);
+  --accent: var(--ro-acento);
+  --accent-ink: var(--ro-sobre-acento);
+  --border: var(--ro-borda);
+  --danger: var(--ro-perigo);
+  --font-title: var(--ro-fonte-titulo);
+  --font-mono: var(--ro-fonte-mono);
+  --radius-card: var(--ro-raio-card);
+  --radius-field: var(--ro-raio-campo);
+  --radius-pill: var(--ro-raio-pilula);
   --boost: var(--accent);
   --fav: var(--accent);
   --tabbar-h: 56px;
   --bar-top: calc(var(--sat, 0px) + 12px); /* folga abaixo da barra de status do iOS (o toque nessa borda não registra) */
   --sat: env(safe-area-inset-top, 0px);
   --sab: env(safe-area-inset-bottom, 0px);
-}
-
-@media (prefers-color-scheme: light) {
-  :root:not([data-theme='dark']) {
-    --bg: #f4f1fa;
-    --surface: #ffffff;
-    --surface-2: #ebe7f5;
-    --text: #0b0a10;
-    --muted: #6b6680;
-    --accent: #5b3fd1;
-    --accent-ink: #f4f1fa;
-    --border: #d9d3ea;
-    --danger: #b3194f;
-    --boost: var(--accent);
-    --fav: var(--accent);
-  }
-}
-
-/* tema escolhido nas preferências (sobrepõe o do sistema) */
-:root[data-theme='light'] {
-  --bg: #f4f1fa; --surface: #ffffff; --surface-2: #ebe7f5; --text: #0b0a10; --muted: #6b6680;
-  --accent: #5b3fd1; --accent-ink: #f4f1fa; --border: #d9d3ea; --danger: #b3194f; color-scheme: light;
-}
-:root[data-theme='dark'] {
-  --bg: #0b0a10; --surface: #17151f; --surface-2: #211e2c; --text: #f4f1fa; --muted: #8d88a0;
-  --accent: #b994ff; --accent-ink: #0b0a10; --border: #2a2735; --danger: #ff7aa8; color-scheme: dark;
 }
 
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -352,13 +327,8 @@ dialog#composer::backdrop { background: rgb(0 0 0 / .55); }
   -webkit-backdrop-filter: blur(14px);
   border-bottom: 1px solid var(--border);
 }
-/* padrão de abas: trilho em pílula (44 px), itens de 36 px, aba atual no acento */
-.seg-bar .tabs {
-  display: flex; gap: 4px; padding: 4px; max-width: 100%; width: max-content;
-  border: 1px solid var(--border); border-radius: var(--radius-pill);
-  overflow-x: auto; scrollbar-width: none; overscroll-behavior-x: contain;
-}
-.seg-bar .tabs::-webkit-scrollbar { display: none; }
+/* abas: trilho e itens vêm do Rochedo (.ro-abas); aqui só o ajuste de largura e o estado ativo (.active) */
+.seg-bar .tabs { width: max-content; }
 .seg-bar .tabs .chip { min-height: 36px; padding: 0 16px; border: 0; background: transparent; font-size: 13px; font-weight: 700; color: var(--muted); }
 .seg-bar .tabs .chip.active { background: var(--accent); color: var(--accent-ink); }
 .chip { flex: none; white-space: nowrap; border-radius: 999px; padding: 6px 14px; font-size: 14px; }

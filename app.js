@@ -798,7 +798,7 @@ function setNotifTab(id) {
 /* Padrão de abas do design system (o mesmo do Life OS): trilho em pílula, itens mono, aba atual no acento.
    Só o trilho rola na horizontal, e a aba atual é trazida para o centro. */
 function segBar(extra, ...kids) {
-  const track = h('div', { class: 'tabs', role: 'tablist' }, ...kids);
+  const track = h('div', { class: 'tabs ro-abas', role: 'tablist' }, ...kids);
   requestAnimationFrame(() => {
     const on = track.querySelector('.chip.active');
     if (on) track.scrollLeft = on.offsetLeft - (track.clientWidth - on.clientWidth) / 2;
@@ -1327,7 +1327,8 @@ let prefs = { ...PREF_DEFAULTS, ...store.get('prefs', {}) };
 
 function applyPrefs() {
   const root = document.documentElement;
-  if (prefs.theme === 'auto') root.removeAttribute('data-theme'); else root.dataset.theme = prefs.theme;
+  if (prefs.theme === 'auto') { root.removeAttribute('data-theme'); root.removeAttribute('data-tema'); }
+  else { root.dataset.theme = prefs.theme; root.dataset.tema = prefs.theme === 'light' ? 'claro' : 'escuro'; } // data-tema é o do Rochedo
   if (prefs.motion === 'reduce') root.dataset.motion = 'reduce'; else root.removeAttribute('data-motion');
   root.style.setProperty('--text-adjust', `${prefs.textSize}%`);
   const dark = prefs.theme === 'dark' || (prefs.theme === 'auto' && !(window.matchMedia && matchMedia('(prefers-color-scheme: light)').matches));

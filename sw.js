@@ -1,20 +1,21 @@
 // Service worker do Paquiderme: só guarda o "casco" do app para abrir rápido/offline.
 // Nunca toca em chamadas à API (são de outra origem e passam direto).
 // Ao mudar qualquer arquivo do app, aumente a versão abaixo.
-const CACHE = 'paquiderme-v44';
+const CACHE = 'paquiderme-v45';
 const SHELL = [
   './',
   'index.html',
   'app.js',
   'lib.js',
-  'icons.js',
+  'rochedo/icones.js',
+  'rochedo/VERSAO',
   'style.css',
-  'fonts/fonts.css',
-  'fonts/bricolage-grotesque-latin-400-normal.woff2',
-  'fonts/bricolage-grotesque-latin-700-normal.woff2',
-  'fonts/bricolage-grotesque-latin-800-normal.woff2',
-  'fonts/jetbrains-mono-latin-400-normal.woff2',
-  'fonts/jetbrains-mono-latin-700-normal.woff2',
+  'rochedo/rochedo.css',
+  'rochedo/fontes/bricolage-grotesque-latin-400-normal.woff2',
+  'rochedo/fontes/bricolage-grotesque-latin-700-normal.woff2',
+  'rochedo/fontes/bricolage-grotesque-latin-800-normal.woff2',
+  'rochedo/fontes/jetbrains-mono-latin-400-normal.woff2',
+  'rochedo/fontes/jetbrains-mono-latin-700-normal.woff2',
   'manifest.webmanifest',
   'icons/icon-192.png',
   'icons/icon-512.png',
@@ -40,7 +41,7 @@ self.addEventListener('fetch', (e) => {
   if (req.method !== 'GET' || url.origin !== self.location.origin) return;
 
   // fontes nunca mudam dentro de uma versão do app: do cache direto, sem ir à rede (a versão do CACHE as renova)
-  if (url.pathname.includes('/fonts/')) {
+  if (url.pathname.includes('/rochedo/fontes/')) {
     e.respondWith(caches.open(CACHE).then(async (cache) => {
       const hit = await cache.match(req, { ignoreSearch: true });
       if (hit) return hit;
