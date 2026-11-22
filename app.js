@@ -8,6 +8,7 @@ import { estado, reiniciar } from './src/estado.svelte.js';
 import { registrar, canon, atualizar, esquecer, limpar as limparPublicacoes } from './src/publicacoes.svelte.js';
 import { desmontarIlhas, ilha, montar, reativas } from './src/ilhas.js';
 import LinhaDoTempo from './src/telas/LinhaDoTempo.svelte';
+import Avisos from './src/telas/Avisos.svelte';
 import Publicacao from './src/telas/Publicacao.svelte';
 import { SvelteMap } from 'svelte/reactivity';
 import { compose as composeEstado, limites, ui as composeUi, reiniciarCompose } from './src/composicao.svelte.js';
@@ -653,88 +654,6 @@ function statusEl(s, { readonly = false, host = null, focal = false } = {}) {
   return montar(Publicacao, { s, readonly, host, focal, c: publicacaoCtx });
 }
 
-const NOTIF_KINDS = {
-  mention: 'mencionou você',
-  status: 'publicou',
-  reblog: 'impulsionou sua publicação',
-  favourite: 'favoritou sua publicação',
-  follow: 'seguiu você',
-  follow_request: 'quer seguir você',
-  poll: 'enquete encerrada',
-  update: 'editou uma publicação',
-  quote: 'citou sua publicação',
-  quoted_update: 'editou uma publicação que você citou',
-  'admin.sign_up': 'novo cadastro na instância',
-  'admin.report': 'nova denúncia',
-  severed_relationships: 'relações cortadas',
-  moderation_warning: 'aviso de moderação',
-};
-
-const uniqAccounts = (ns) => { const seen = new Set(); return ns.map((n) => n.account).filter((x) => !seen.has(x.id) && seen.add(x.id)); };
-
-// Junta favoritos/impulsos da mesma publicação (e seguidores seguidos na lista) numa só notificação
-function groupNotifs(items) {
-  const out = []; const byStatus = new Map();
-  items.forEach((n) => {
-    if ((n.type === 'reblog' || n.type === 'favourite') && n.status) {
-      let g = byStatus.get(n.status.id);
-      if (!g) { g = { group: true, status: n.status, by: {}, newest: n.created_at, ids: [] }; byStatus.set(n.status.id, g); out.push(g); }
-      (g.by[n.type] = g.by[n.type] || []).push(n);
-      g.ids.push(n.id);
-    } else if (n.type === 'follow' && out.length && out[out.length - 1].follows) {
-      out[out.length - 1].follows.push(n);
-    } else if (n.type === 'follow') {
-      out.push({ follows: [n] });
-    } else out.push(n);
-  });
-  return out;
-}
-
-function namesNode(accs) {
-  const shown = accs.slice(0, 2);
-  const rest = accs.length - shown.length;
-  const link = (a) => h('strong', { class: 'link-name', role: 'button', tabindex: '0', onclick: () => openProfile(a) }, nameNode(a));
-  const nodes = [link(shown[0])];
-  if (shown[1]) nodes.push(rest > 0 ? ', ' : ' e ', link(shown[1]));
-  if (rest > 0) nodes.push(` e mais ${rest}`);
-  return nodes;
-}
-
-const GROUP_VERBS = {
-  reblog: ['impulsionou', 'impulsionaram', 'sua publicação'],
-  favourite: ['favoritou', 'favoritaram', 'sua publicação'],
-  follow: ['seguiu', 'seguiram', 'você'],
-};
-
-function avatarStack(accs) {
-  const max = 6;
-  return h('div', { class: 'notif-avatars' },
-    ...accs.slice(0, max).map((a) => h('img', { class: 'ro-avatar avatar', src: safeUrl(a.avatar_static || a.avatar), alt: a.display_name || a.acct, loading: 'lazy', onclick: () => openProfile(a) })),
-    accs.length > max ? h('span', { class: 'more-count' }, `+${accs.length - max}`) : null);
-}
-
-function notifLine(type, ns, when) {
-  const accs = uniqAccounts(ns);
-  const [one, many, obj] = GROUP_VERBS[type];
-  return h('div', { class: 'notif-kind' }, ...namesNode(accs), ` ${accs.length > 1 ? many : one} ${obj}`, when ? ` · ${timeAgo(when)}` : '');
-}
-
-function notifGroupEl(g) {
-  if (g.follows) {
-    const accs = uniqAccounts(g.follows);
-    if (accs.length === 1) return notifEl(g.follows[0]);
-    return h('div', { class: 'notif group' }, avatarStack(accs), notifLine('follow', g.follows, g.follows[0].created_at));
-  }
-  const all = Object.values(g.by).flat();
-  const wrap = h('div', { class: 'notif group' }, avatarStack(uniqAccounts(all)));
-  let first = true;
-  ['reblog', 'favourite'].forEach((t) => { if (g.by[t]) { wrap.append(notifLine(t, g.by[t], first ? g.newest : null)); first = false; } });
-  wrap.append(statusEl(g.status));
-  return wrap;
-}
-
-function notifItem(i) { return i.group || i.follows ? notifGroupEl(i) : notifEl(i); }
-
 const NOTIF_TABS = [['all', 'Todos'], ['mentions', 'Menções'], ['dms', 'Mensagens']];
 
 function setNotifTab(id) {
@@ -759,52 +678,17 @@ function segBar(extra, ...kids) {
 function notificationsView(view) {
   view.append(segBar('', ...NOTIF_TABS.map(([id, label]) =>
     h('button', { type: 'button', role: 'tab', 'aria-selected': state.notifTab === id ? 'true' : 'false', onclick: () => setNotifTab(id) }, label))));
-  if (state.notifTab === 'mentions') renderList(view, 'mentions', notifEl);
-  else if (state.notifTab === 'dms') renderList(view, 'convs', convEl);
-  else renderList(view, 'notifications', notifItem, groupNotifs);
+  const kind = state.notifTab === 'mentions' ? 'mentions' : state.notifTab === 'dms' ? 'convs' : 'notifications';
+  publicacaoCtx ||= mkPublicacaoCtx();
+  reativas.set(kind, getList(kind));
+  ilha(view, Avisos, {
+    tipo: kind, st: getList(kind), c: { ...publicacaoCtx, api, openProfile, openThread },
+    aoMais: () => loadList(kind, true),
+    aoTentar: () => loadList(kind, getList(kind).items.length > 0),
+  });
 }
 
 const plainText = (html) => { const d = new DOMParser().parseFromString(html || '', 'text/html').body; d.querySelectorAll('br').forEach((b) => b.replaceWith(' ')); return (d.textContent || '').replace(/\s+/g, ' ').trim(); };
-
-function convEl(c) {
-  const last = c.last_status;
-  if (!last) return null;
-  const accs = c.accounts && c.accounts.length ? c.accounts : [last.account];
-  const row = h('div', { class: `conv${c.unread ? ' unread' : ''}`, role: 'button', tabindex: '0', onclick: async () => {
-    if (c.unread) { c.unread = false; row.classList.remove('unread'); api(`/api/v1/conversations/${c.id}/read`, { method: 'POST' }).catch(() => {}); }
-    openThread(last);
-  } },
-    avatarStack(accs),
-    h('div', { class: 'conv-body' },
-      h('div', { class: 'conv-top' }, h('strong', {}, accs.map((x) => x.display_name || x.acct).join(', ')), h('time', { class: 'muted small' }, timeAgo(last.created_at))),
-      h('div', { class: 'conv-text muted' }, plainText(last.content) || (last.media_attachments && last.media_attachments.length ? '(mídia)' : ''))),
-    c.unread ? h('span', { class: 'conv-dot', 'aria-label': 'Não lida' }) : null);
-  return row;
-}
-
-function requestButtons(n, wrap) {
-  const box = h('div', { class: 'req-actions' });
-  const act = (verb, label, done, cls) => h('button', { type: 'button', class: cls, onclick: async () => {
-    box.querySelectorAll('button').forEach((b) => { b.disabled = true; });
-    try {
-      await api(`/api/v1/follow_requests/${n.account.id}/${verb}`, { method: 'POST' });
-      box.replaceChildren(h('span', { class: 'muted' }, done));
-    } catch (e) { toast(e.message); box.querySelectorAll('button').forEach((b) => { b.disabled = false; }); }
-  } }, label);
-  box.append(act('authorize', 'Aceitar', 'Pedido aceito', 'ro-botao ro-botao--principal'), act('reject', 'Rejeitar', 'Pedido rejeitado', 'ro-botao'));
-  return box;
-}
-
-function notifEl(n) {
-  const wrap = h('div', { class: 'notif' });
-  wrap.append(h('div', { class: 'notif-kind' },
-    h('strong', { class: 'link-name', role: 'button', tabindex: '0', onclick: () => openProfile(n.account) }, nameNode(n.account)),
-    ' ', NOTIF_KINDS[n.type] || n.type, ' · ', timeAgo(n.created_at)));
-  if (n.status) wrap.append(statusEl(n.status));
-  else wrap.append(accountRow(n.account));
-  if (n.type === 'follow_request') wrap.append(requestButtons(n, wrap));
-  return wrap;
-}
 
 function moreButton(kind) {
   const st = getList(kind);
@@ -1363,7 +1247,7 @@ function liveNotification(n) {
   const L = state.notifications;
   const viewing = state.tab === 'notifications' && state.profiles.length === 0;
   if (!L.items.some((x) => x.id === n.id) && (L.items.length || L.loaded)) { L.items.unshift(n); L.cached = false; }
-  if (viewing) { render(); markNotificationsRead(); } else { setUnread(true); ringBell(); }
+  if (viewing) { if (reativas.get('notifications') !== L) render(); markNotificationsRead(); } else { setUnread(true); ringBell(); }
 }
 
 // Ao voltar para o app: busca o que chegou enquanto a conexão esteve fechada

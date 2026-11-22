@@ -1,6 +1,6 @@
 <script>
 	import Publicacao from './Publicacao.svelte';
-	import Estado from './Estado.svelte';
+	import RodapeLista from './RodapeLista.svelte';
 
 	// Lista de publicações (home, listas, local, global, hashtag, perfis, outra instância).
 	// `st` é a entrada do estado reativo ({ items, more, loading, error, cached, cachedAt }): carregar, paginar ou chegar
@@ -25,14 +25,4 @@
 	<Publicacao s={it} {readonly} {host} {c} />
 {/each}
 
-{#if st.loading}
-	<Estado carregando />
-{:else if st.error}
-	<Estado erro={st.error} {aoTentar} />
-{:else if !st.items.length}
-	<Estado vazio="Nada por aqui ainda." />
-{:else if !st.more}
-	<p class="empty">Fim.</p>
-{:else}
-	<button type="button" class="ro-botao more" onclick={aoMais}>Carregar mais</button>
-{/if}
+<RodapeLista {st} {aoMais} {aoTentar} />
