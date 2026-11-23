@@ -28,6 +28,14 @@
 	// barra de busca fixa e pílula de novas publicações (fora da casca, no index.html) seguem o estado
 	$effect(() => c.sincronizar());
 
+	// Abas (Início, Avisos, Explorar) ficam vivas depois da primeira visita: só escondidas, para voltar
+	// na mesma posição e sem recriar as publicações. Perfil/pilha de telas continuam sendo criados na hora.
+	const emPilha = $derived(!!(topo || perfil));
+	let visitadas = $state({});
+	$effect.pre(() => { if (!emPilha) visitadas[st.tab] = true; });
+	const ativa = (t) => !emPilha && st.tab === t;
+	const viva = (t) => ativa(t) || visitadas[t];
+
 	const lista = (tipo) => (tipo === 'list' ? st.listTl : st[tipo]);
 	const tipoAvisos = $derived(st.notifTab === 'mentions' ? 'mentions' : st.notifTab === 'dms' ? 'convs' : 'notifications');
 	const segs = (l) => l.map(([id, rotulo]) => ({ id, rotulo }));
@@ -85,7 +93,10 @@
 				aoMais={() => c.carregar('p:' + perfil.seg, true)} aoTentar={() => c.carregar('p:' + perfil.seg, perfil[perfil.seg].items.length > 0)} />
 		{/key}
 	{/if}
-{:else if st.tab === 'home'}
+{/if}
+
+{#if viva('home')}
+<div class="aba" hidden={!ativa('home')}>
 	{#if ambiente.alarme}
 		<div class="alarm" role="status"><span>{ambiente.alarme}</span><button type="button" class="link" onclick={c.verStatus}>Ver status</button></div>
 	{/if}
@@ -93,13 +104,19 @@
 		valor={st.homeList || ''} aoMudar={c.mudarLista} nome="Início e listas"
 		acao={{ rotulo: 'Listas', icone: 'settings', aria: 'Gerenciar listas', aoClicar: c.gerenciarListas }} />
 	{@render linha(st.homeList ? 'list' : 'home')}
-{:else if st.tab === 'notifications'}
+</div>
+{/if}
+{#if viva('notifications')}
+<div class="aba" hidden={!ativa('notifications')}>
 	<BarraAbas itens={segs(c.abasAvisos)} valor={st.notifTab} aoMudar={c.mudarAbaAvisos} nome="Avisos" />
 	{#key tipoAvisos}
 		<Avisos tipo={tipoAvisos} st={st[tipoAvisos]} c={c.lista}
 			aoMais={() => c.carregar(tipoAvisos, true)} aoTentar={() => c.carregar(tipoAvisos, st[tipoAvisos].items.length > 0)} />
 	{/key}
-{:else if st.tab === 'explore'}
+</div>
+{/if}
+{#if viva('explore')}
+<div class="aba" hidden={!ativa('explore')}>
 	{#if ex.tag}
 		<div class="tag-head">
 			<button type="button" class="ro-botao ro-botao--quieto ro-botao--icone icon-btn" aria-label="Voltar" onclick={c.fecharTag}><Ico nome="back" tamanho={22} /></button>
@@ -125,4 +142,5 @@
 			{@render linha(ex.seg)}
 		{/if}
 	{/if}
+</div>
 {/if}

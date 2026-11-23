@@ -79,7 +79,7 @@ with sync_playwright() as p:
     page.click(".profile-bar .icon-btn"); page.wait_for_selector(".status")
     page.click(".status .name"); page.wait_for_selector(".profile-name"); page.wait_for_selector(".status .actions"); page.wait_for_timeout(300)
     # curte DENTRO do perfil (status 30), volta: a home não recarrega e deve mostrar a curtida
-    page.locator(".status .actions button[aria-label^='Favorit']").last.click(); page.wait_for_timeout(500)
+    page.locator(".status .actions button[aria-label^='Favorit']:visible").last.click(); page.wait_for_timeout(500)
     page.click(".profile-bar .icon-btn"); page.wait_for_selector(".status"); page.wait_for_timeout(300)
     lab = page.eval_on_selector(".status .actions button[aria-label^='Favorit']", "b=>b.getAttribute('aria-label')+'|'+b.getAttribute('aria-pressed')")
     print("home:", lab); assert "8" in lab and "true" in lab

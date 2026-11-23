@@ -128,8 +128,8 @@ with sync_playwright() as p:
     page.fill("#search-input","lua"); page.press("#search-input","Enter")
     page.wait_for_function("document.body.innerText.includes('ACHADA lua')")
     txt=page.inner_text("#view"); assert "CONTAS" in txt.upper() and "HASHTAGS" in txt.upper() and "#lua" in txt, txt[:300]
-    page.click(".chip:has-text('Contas')"); page.wait_for_function("!document.querySelector('.status') && document.querySelector('.account-row')")
-    page.click(".chip:has-text('Publicações')"); page.wait_for_selector(".status")
+    page.click(".chip:has-text('Contas')"); page.wait_for_function("!document.querySelector('.aba:not([hidden]) .status') && document.querySelector('.account-row')")
+    page.click(".chip:has-text('Publicações')"); page.wait_for_selector(".aba:not([hidden]) .status")
     page.click(".chip:has-text('Tudo')"); page.wait_for_selector("h3.section"); page.click(".tag-row"); page.wait_for_function("document.body.innerText.includes('#lua')")
     print("busca ok")
 
