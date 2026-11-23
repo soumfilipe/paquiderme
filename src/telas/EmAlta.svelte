@@ -4,10 +4,11 @@
 	import ContaLinha from './ContaLinha.svelte';
 	import TagLinha from './TagLinha.svelte';
 	import NoDom from './NoDom.svelte';
+	import CartaoLink from './CartaoLink.svelte';
 
 	// Aba "Em alta": avisos da instância, sugestões de contas, links, hashtags e publicações. `t`: estado reativo de trends.
 	let { t, c, aoTentar, aoDispensar } = $props();
-	const cartoes = $derived(t.links.map((l) => ({ id: l.url, no: c.cardEl(l) })).filter((x) => x.no));
+	const links = $derived(t.links.filter((l) => l && l.url && (l.title || l.description)));
 </script>
 
 {#if t.error}
@@ -25,9 +26,9 @@
 		<h3 class="ro-rotulo section">Sugestões de contas</h3>
 		{#each t.people.filter((p) => p.account) as p (p.account.id)}<ContaLinha a={p.account} {c} />{/each}
 	{/if}
-	{#if cartoes.length}
+	{#if links.length}
 		<h3 class="ro-rotulo section">Links em alta</h3>
-		{#each cartoes as k (k.id)}<div class="trend-link"><NoDom no={k.no} /></div>{/each}
+		{#each links as l (l.url)}<div class="trend-link"><CartaoLink card={l} /></div>{/each}
 	{/if}
 	<h3 class="ro-rotulo section">Hashtags em alta</h3>
 	{#if !t.tags.length}<Estado vazio="Nenhuma hashtag em alta agora." />{/if}
