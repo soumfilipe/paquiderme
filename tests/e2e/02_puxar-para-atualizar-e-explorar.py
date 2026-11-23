@@ -91,13 +91,13 @@ with sync_playwright() as p:
     print("puxão curto ignorado: ok")
 
     # Explorar > minha instância
-    page.click('#tabs button[data-tab="explore"]'); page.wait_for_selector(".seg-bar")
+    page.click('#tabs button[data-tab="explore"]'); page.wait_for_selector(".seg-bar:visible")
     page.wait_for_function("document.body.innerText.includes('Post LOCAL')")
     page.screenshot(path="/tmp/n3-explore.png")
     # Global
-    page.click(".seg-bar >> text=Global"); page.wait_for_function("document.body.innerText.includes('Post GLOBAL')")
+    page.click(".seg-bar:visible >> text=Global"); page.wait_for_function("document.body.innerText.includes('Post GLOBAL')")
     # Em alta
-    page.click(".seg-bar >> text=Em alta"); page.wait_for_selector(".tag-row"); page.wait_for_function("document.body.innerText.includes(\"Post EM ALTA\")")
+    page.click(".seg-bar:visible >> text=Em alta"); page.wait_for_selector(".tag-row"); page.wait_for_function("document.body.innerText.includes(\"Post EM ALTA\")")
     assert page.inner_text("body").count("Post EM ALTA") == 1
     page.screenshot(path="/tmp/n4-trends.png")
     # hashtag em alta -> timeline da tag e voltar
@@ -105,10 +105,10 @@ with sync_playwright() as p:
     page.screenshot(path="/tmp/n5-tag.png")
     page.click(".tag-head button"); page.wait_for_selector(".tag-row")
     # outras instâncias
-    page.click(".seg-bar >> text=Outras"); page.wait_for_selector(".inst-form")
+    page.click(".seg-bar:visible >> text=Outras"); page.wait_for_selector(".inst-form")
     page.fill(".inst-form input", "https://Mastodon.Social/"); page.click(".inst-form button")
     page.wait_for_function("document.body.innerText.includes('Post da outra instância')")
-    assert page.query_selector(".status .actions button") is None, "ações visíveis em modo leitura"
+    assert page.query_selector(".aba:not([hidden]) .status .actions button") is None, "ações visíveis em modo leitura"
     page.screenshot(path="/tmp/n6-other.png")
     page.fill(".inst-form input", "blocked.example"); page.click(".inst-form button")
     page.wait_for_function("document.body.innerText.includes('não libera')")

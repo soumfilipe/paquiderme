@@ -670,7 +670,7 @@ function clearCaches(s) {
 /* ----- Marcador do Início, sincronizado entre aparelhos (/api/v1/markers) ----- */
 const markKey = () => `mark.${session.host}.${session.account.id}`;
 function topVisibleItemId() {
-  for (const el of document.querySelectorAll('#view .status[data-id]')) {
+  for (const el of document.querySelectorAll('#view .aba:not([hidden]) .status[data-id], #view > .status[data-id]')) {
     if (el.getBoundingClientRect().bottom > 70) {
       const it = state.home.items.find((x) => (x.reblog || x).id === el.dataset.id);
       return it ? it.id : null;
@@ -702,7 +702,7 @@ async function checkHomeMarker() {
     pill.onclick = () => {
       pill.hidden = true;
       store.set(markKey(), remote);
-      const el = document.querySelector(`#view .status[data-id="${(state.home.items[idx].reblog || state.home.items[idx]).id}"]`);
+      const el = document.querySelector(`#view .aba:not([hidden]) .status[data-id="${(state.home.items[idx].reblog || state.home.items[idx]).id}"]`);
       if (el) window.scrollTo({ top: el.getBoundingClientRect().top + window.scrollY - 70, behavior: 'smooth' });
     };
   } catch { /* instância sem marcadores */ }
@@ -714,7 +714,7 @@ function shortcutKey(e) {
   const t = e.target;
   if (t && t.matches && t.matches('input, textarea, select, [contenteditable]')) return;
   if ($('#composer').open || sheetEl() || $('#viewer').open) return;
-  const list = [...document.querySelectorAll('#view .status[data-id]')];
+  const list = [...document.querySelectorAll('#view .aba:not([hidden]) .status[data-id], #view > .status[data-id]')];
   if (!list.length) return;
   const move = (d) => {
     let i = focusedStatus ? list.indexOf(focusedStatus) : -1;
@@ -1712,6 +1712,7 @@ async function openProfileByAcct(acct) {
 
 function closeProfile() {
   const p = state.profiles.pop();
+  flushSync();
   window.scrollTo(0, (p && p.returnScroll) || 0);
 }
 
@@ -2166,7 +2167,10 @@ function refreshCurrent() {
   loadList(kind);
 }
 
+const abaY = {}; // posição de rolagem de cada aba viva (Início, Avisos, Explorar)
 function selectTab(tab) {
+  const mesma = tab === state.tab;
+  if (!mesma && !state.profiles.length && !state.settingsOpen) abaY[state.tab] = window.scrollY;
   state.tab = tab;
   if (tab === 'notifications') setUnread(false);
   state.profiles = [];
@@ -2174,7 +2178,8 @@ function selectTab(tab) {
   if (tab === 'account' && !state.me) state.me = mkProfile(session.account);
   document.querySelectorAll('#tabs button').forEach((b) => { if (b.dataset.tab === tab) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current'); });
   $('#fab').hidden = tab === 'account';
-  window.scrollTo(0, 0);
+  flushSync(); // mostra a aba (viva) antes de rolar
+  window.scrollTo(0, mesma ? 0 : abaY[tab] || 0);
   const icon = document.querySelector('#tabs [aria-current="page"] svg');
   if (icon) { icon.classList.remove('bump'); void icon.getBoundingClientRect(); icon.classList.add('bump'); }
   if (tab === 'home') {
