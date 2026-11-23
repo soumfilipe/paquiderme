@@ -1,9 +1,9 @@
 <script>
 	import { safeUrl } from '../../lib.js';
 	import NomeConta from './NomeConta.svelte';
-	import NoDom from './NoDom.svelte';
+	import Corpo from './Corpo.svelte';
 
-	// Publicação citada. `c`: abrirConversa(status, host), html(texto, emojis).
+	// Publicação citada. `c`: abrirConversa(status, host).
 	let { q, host = null, c } = $props();
 	const qs = $derived(q.quoted_status);
 	const aceita = $derived(!!qs && q.state === 'accepted');
@@ -20,6 +20,6 @@
 			<img class="ro-avatar avatar sm" src={safeUrl(a.avatar_static || a.avatar)} alt="" loading="lazy" />
 			<strong><NomeConta conta={a} /></strong><span class="acct">@{a.acct}</span>
 		</div>
-		{#if qs.spoiler_text}<p class="muted small">{qs.spoiler_text}</p>{:else}<div class="quote-body"><NoDom no={c.html(qs.content, qs.emojis)} /></div>{/if}
+		{#if qs.spoiler_text}<p class="muted small">{qs.spoiler_text}</p>{:else}<div class="quote-body"><Corpo html={qs.content} emojis={qs.emojis} /></div>{/if}
 	</div>
 {/if}

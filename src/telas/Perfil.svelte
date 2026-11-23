@@ -1,12 +1,13 @@
 <script>
 	import { Icone } from 'rochedo/svelte';
 	import NoDom from './NoDom.svelte';
+	import Corpo from './Corpo.svelte';
 	import NomeConta from './NomeConta.svelte';
 	import Emoji from './Emoji.svelte';
 
 	// Cabeçalho de um perfil: banner, avatar, ações, selos, bio, campos e contagens.
 	// `c` traz o que continua no app.js: p (entrada do perfil), self, seguirNo (botão de seguir, feito em JS),
-	// url(), nomeNo(conta), html(texto, emojis), emoji(texto, emojis), contar(n), arroba(conta),
+	// url(), contar(n), arroba(conta),
 	// editar(), listas(), menu(), abrirPerfil(conta), abrirTag(nome), abrirGente(tipo).
 	let { c } = $props();
 	const p = $derived(c.p);
@@ -53,7 +54,7 @@
 	{#if a.moved}
 		<p class="muted small">Mudou para <span class="link-name" role="button" tabindex="0" onclick={() => c.abrirPerfil(a.moved)} onkeydown={(e) => e.key === 'Enter' && c.abrirPerfil(a.moved)}>@{a.moved.acct}</span></p>
 	{/if}
-	{#if a.note}<div class="bio"><NoDom no={c.html(a.note, a.emojis)} /></div>{/if}
+	{#if a.note}<div class="bio"><Corpo html={a.note} emojis={a.emojis} /></div>{/if}
 	{#if p.featured?.length}
 		<div class="featured-tags">
 			{#each p.featured as t (t.name)}
@@ -66,7 +67,7 @@
 			{#each campos as f, i (i)}
 				<div class="field">
 					<dt><Emoji texto={f.name || ''} emojis={a.emojis} /></dt>
-					<dd class:verified={f.verified_at}><NoDom no={c.html(f.value, a.emojis)} />{#if f.verified_at}<Icone nome="check" tamanho={16} />{/if}</dd>
+					<dd class:verified={f.verified_at}><Corpo html={f.value} emojis={a.emojis} />{#if f.verified_at}<Icone nome="check" tamanho={16} />{/if}</dd>
 				</div>
 			{/each}
 		</dl>

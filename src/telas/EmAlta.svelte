@@ -3,7 +3,7 @@
 	import Estado from './Estado.svelte';
 	import ContaLinha from './ContaLinha.svelte';
 	import TagLinha from './TagLinha.svelte';
-	import NoDom from './NoDom.svelte';
+	import Corpo from './Corpo.svelte';
 	import CartaoLink from './CartaoLink.svelte';
 
 	// Aba "Em alta": avisos da instância, sugestões de contas, links, hashtags e publicações. `t`: estado reativo de trends.
@@ -18,7 +18,7 @@
 {:else}
 	{#each t.notices as n (n.id)}
 		<div class="notice">
-			<div class="notice-body"><NoDom no={c.sanitizeHtml(n.content, n.emojis)} /></div>
+			<div class="notice-body"><Corpo html={n.content} emojis={n.emojis} /></div>
 			<button type="button" class="link" onclick={() => aoDispensar(n)}>Dispensar</button>
 		</div>
 	{/each}

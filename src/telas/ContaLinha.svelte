@@ -1,7 +1,7 @@
 <script>
 	import NomeConta from './NomeConta.svelte';
 
-	/** Linha de uma conta (avatar, nome, @) que abre o perfil, sem botão. `c`: safeUrl, nameNode, openProfile. */
+	/** Linha de uma conta (avatar, nome, @) que abre o perfil, sem botão. `c`: safeUrl, openProfile. */
 	let { a, c } = $props();
 	const abrir = () => c.openProfile(a);
 </script>

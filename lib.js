@@ -71,32 +71,22 @@ export function h(tag, attrs = {}, ...kids) {
   return el;
 }
 
-/* ---------- Emojis personalizados ---------- */
-
-export function emojiFragment(text, emojis = []) {
-  const frag = document.createDocumentFragment();
-  const map = new Map((emojis || []).map((e) => [e.shortcode, e]));
-  if (!map.size) {
-    frag.append(text);
-    return frag;
-  }
-  let last = 0;
-  for (const m of text.matchAll(/:([a-zA-Z0-9_]+):/g)) {
-    const e = map.get(m[1]);
+/** Divide um texto em pedaços de texto ({ t }) e emojis personalizados ({ url, codigo }) da instância. */
+export function partesEmoji(texto, emojis) {
+  const mapa = new Map((emojis || []).map((e) => [e.shortcode, e]));
+  if (!mapa.size) return [{ t: texto }];
+  const saida = [];
+  let ultimo = 0;
+  for (const m of texto.matchAll(/:([a-zA-Z0-9_]+):/g)) {
+    const e = mapa.get(m[1]);
     const url = e && safeUrl(e.static_url || e.url);
     if (!url) continue;
-    if (m.index > last) frag.append(text.slice(last, m.index));
-    const img = document.createElement('img');
-    img.className = 'emoji';
-    img.src = url;
-    img.alt = `:${m[1]}:`;
-    img.title = img.alt;
-    img.setAttribute('loading', 'lazy');
-    frag.append(img);
-    last = m.index + m[0].length;
+    if (m.index > ultimo) saida.push({ t: texto.slice(ultimo, m.index) });
+    saida.push({ url, codigo: `:${m[1]}:` });
+    ultimo = m.index + m[0].length;
   }
-  if (last < text.length) frag.append(text.slice(last));
-  return frag;
+  if (ultimo < texto.length) saida.push({ t: texto.slice(ultimo) });
+  return saida;
 }
 
 /* ---------- Sanitização do HTML das publicações ----------
@@ -110,44 +100,61 @@ const ALLOWED_TAGS = new Set([
 const DROP_TAGS = new Set(['SCRIPT', 'STYLE', 'IFRAME', 'OBJECT', 'EMBED', 'TEMPLATE', 'NOSCRIPT', 'SVG', 'MATH']);
 const ALLOWED_CLASSES = new Set(['invisible', 'ellipsis', 'mention', 'hashtag', 'u-url', 'h-card']);
 
-function walk(src, out, emojis) {
+// Converte o HTML em uma árvore simples ({ t } texto, { url, codigo } emoji ou { tag, href, cls, filhos }) que as telas desenham em Svelte.
+function arvore(src, emojis) {
+  const saida = [];
   for (const node of src.childNodes) {
     if (node.nodeType === 3) {
-      out.append(emojiFragment(node.nodeValue, emojis));
+      saida.push(...partesEmoji(node.nodeValue, emojis));
       continue;
     }
     if (node.nodeType !== 1) continue;
     const tag = node.tagName.toUpperCase();
     if (DROP_TAGS.has(tag)) continue;
     if (!ALLOWED_TAGS.has(tag)) {
-      walk(node, out, emojis); // desembrulha: mantém só o conteúdo
+      saida.push(...arvore(node, emojis)); // desembrulha: mantém só o conteúdo
       continue;
     }
-    const el = document.createElement(tag.toLowerCase());
+    let href = null;
     if (tag === 'A') {
-      const href = safeUrl(node.getAttribute('href'));
+      href = safeUrl(node.getAttribute('href'));
       if (!href) {
-        walk(node, out, emojis);
+        saida.push(...arvore(node, emojis));
         continue;
       }
-      el.setAttribute('href', href);
-      el.setAttribute('target', '_blank');
-      el.setAttribute('rel', 'nofollow noopener noreferrer');
     }
-    const classes = (node.getAttribute('class') || '')
+    const cls = (node.getAttribute('class') || '')
       .split(/\s+/)
-      .filter((c) => ALLOWED_CLASSES.has(c));
-    if (classes.length) el.className = classes.join(' ');
-    walk(node, el, emojis);
-    out.append(el);
+      .filter((c) => ALLOWED_CLASSES.has(c))
+      .join(' ');
+    saida.push({ tag: tag.toLowerCase(), href, cls: cls || null, filhos: arvore(node, emojis) });
   }
+  return saida;
 }
 
-export function sanitizeHtml(html, emojis = []) {
-  const body = new DOMParser().parseFromString(html || '', 'text/html').body;
-  const frag = document.createDocumentFragment();
-  walk(body, frag, emojis);
-  return frag;
+const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+function serializar(nos) {
+  let s = '';
+  for (const n of nos) {
+    if (n.t !== undefined) s += esc(n.t);
+    else if (n.url) s += `<img class="emoji" src="${esc(n.url)}" alt="${esc(n.codigo)}" title="${esc(n.codigo)}" loading="lazy">`;
+    else if (n.tag === 'br') s += '<br>';
+    else {
+      const attrs = (n.href ? ` href="${esc(n.href)}" target="_blank" rel="nofollow noopener noreferrer"` : '') + (n.cls ? ` class="${esc(n.cls)}"` : '');
+      s += `<${n.tag}${attrs}>${serializar(n.filhos)}</${n.tag}>`;
+    }
+  }
+  return s;
+}
+
+/** HTML seguro para inserir direto na tela: só tags, classes e endereços permitidos, texto com escape. */
+export function htmlSeguro(html, emojis = []) {
+  return serializar(arvoreHtml(html, emojis));
+}
+
+export function arvoreHtml(html, emojis = []) {
+  return arvore(new DOMParser().parseFromString(html || '', 'text/html').body, emojis);
 }
 
 /* ---------- Ícones (Hugeicons) ---------- */
