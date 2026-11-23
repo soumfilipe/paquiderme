@@ -1,5 +1,11 @@
 <script>
 	import NoDom from './NoDom.svelte';
+	import NomeConta from './NomeConta.svelte';
+	import Emoji from './Emoji.svelte';
+	import Midia from './Midia.svelte';
+	import Enquete from './Enquete.svelte';
+	import CartaoLink from './CartaoLink.svelte';
+	import Citacao from './Citacao.svelte';
 	import Ico from './Ico.svelte';
 
 	// Uma publicação (antigo statusEl). `s` é a que veio da lista; a versão exibida é sempre a canônica (`c.canon`),
@@ -16,10 +22,6 @@
 	const conteudo = $derived(sh.content);
 	const emojis = $derived(sh.emojis);
 	const aviso = $derived(sh.spoiler_text);
-	const sigMidia = $derived(JSON.stringify([(sh.media_attachments || []).map((m) => [m.url, m.preview_url, m.type, m.description]), sh.sensitive]));
-	const sigPoll = $derived(sh.poll ? JSON.stringify(sh.poll) : '');
-	const sigCartao = $derived(sh.card ? JSON.stringify(sh.card) : '');
-	const sigCitacao = $derived(sh.quote ? JSON.stringify(sh.quote) : '');
 
 	let revelado = $state(c.revealed.has(sh.id));
 	const filtros = $derived(revelado ? [] : c.filterHits(atual));
@@ -34,13 +36,7 @@
 	const minhaLingua = (navigator.language || 'pt').slice(0, 2);
 	const podeTraduzir = $derived(!readonly && !host && c.limits().translation && sh.language && sh.language !== minhaLingua && conteudo);
 
-	// nós de DOM caros: só refeitos quando o conteúdo muda
-	const midia = $derived.by(() => { void sigMidia; return c.mediaEl(sh); });
-	const enquete = $derived.by(() => { void sigPoll; return sh.poll ? c.pollEl(sh, { readonly: readonly || !!host }) : null; });
-	const cartao = $derived.by(() => { void sigCartao; return !sh.poll && !midia && sh.card && !sh.quote ? c.cardEl(sh.card) : null; });
-	const citacao = $derived.by(() => { void sigCitacao; return sh.quote && !readonly ? c.quoteEl(sh.quote, host) : null; });
-	const nomeConta = $derived(c.nameNode(conta));
-	const avisoNo = $derived(aviso ? c.emojiFragment(aviso, emojis) : null);
+	const temMidia = $derived((sh.media_attachments || []).some((m) => c.safeUrl(m.url)));
 
 	const podeImpulsionar = $derived(sh.visibility === 'public' || sh.visibility === 'unlisted');
 	const respostaA = $derived(sh.in_reply_to_id && !host ? (sh.mentions || []).find((m) => m.id === sh.in_reply_to_account_id) : null);
@@ -81,7 +77,7 @@
 	<article class="status" class:focal data-id={id} use:marcar={{ sh, host }}>
 		{#if atual.reblog}
 			<div class="boost-note"><Ico nome="boost" tamanho={14} />
-				<span class="link-name" role="button" tabindex="0" onclick={() => c.openAccountFrom(atual.account, host)} onkeydown={(e) => e.key === 'Enter' && c.openAccountFrom(atual.account, host)}><NoDom no={c.nameNode(atual.account)} /></span> impulsionou</div>
+				<span class="link-name" role="button" tabindex="0" onclick={() => c.openAccountFrom(atual.account, host)} onkeydown={(e) => e.key === 'Enter' && c.openAccountFrom(atual.account, host)}><NomeConta conta={atual.account} /></span> impulsionou</div>
 		{/if}
 		{#if sh.in_reply_to_id && !host}
 			<div class="reply-note muted small" role="button" tabindex="0" onclick={(e) => { e.stopPropagation(); c.abrirRespondida(sh); }} onkeydown={(e) => e.key === 'Enter' && c.abrirRespondida(sh)}>
@@ -91,7 +87,7 @@
 			<div class="who-link" role="button" tabindex="0" aria-label="Abrir perfil de {conta.acct}" onclick={() => c.openAccountFrom(conta, host)} onkeydown={(e) => e.key === 'Enter' && c.openAccountFrom(conta, host)}>
 				<img class="ro-avatar avatar" src={c.safeUrl(conta.avatar_static || conta.avatar)} alt="" loading="lazy" />
 				<div class="who">
-					<div class="name"><NoDom no={nomeConta} /></div>
+					<div class="name"><NomeConta conta={conta} /></div>
 					<span class="acct">@{conta.acct}</span>
 				</div>
 			</div>
@@ -111,15 +107,15 @@
 					<button type="button" class="link tr-btn" disabled={traduzindo} onclick={traduzir}>{traduzindo ? 'Traduzindo…' : `Traduzir do ${sh.language.toUpperCase()}`}</button>
 				{/if}
 			{/if}
-			{#if midia}<NoDom no={midia} />{/if}
-			{#if enquete}<NoDom no={enquete} />{/if}
-			{#if cartao}<NoDom no={cartao} />{/if}
-			{#if citacao}<NoDom no={citacao} />{/if}
+			{#if temMidia}<Midia anexos={sh.media_attachments} sensivel={sh.sensitive && !c.prefs().showSensitive} abrirVisualizador={c.abrirVisualizador} />{/if}
+			{#if sh.poll}<Enquete s={sh} somenteLeitura={readonly || !!host} c={c.enquete} />{/if}
+			{#if !sh.poll && !temMidia && sh.card && !sh.quote}<CartaoLink card={sh.card} />{/if}
+			{#if sh.quote && !readonly}<Citacao q={sh.quote} {host} c={c.citacao} />{/if}
 		{/snippet}
 
 		{#if aviso}
 			<details class="cw" open={c.prefs().openCw || undefined}>
-				<summary><NoDom no={avisoNo} /></summary>
+				<summary><Emoji texto={aviso} {emojis} /></summary>
 				{@render conteudoPub()}
 			</details>
 		{:else}

@@ -1,6 +1,6 @@
 <script>
 	import { Icone, Interruptor } from 'rochedo/svelte';
-	import NoDom from './NoDom.svelte';
+	import NomeConta from './NomeConta.svelte';
 
 	// Configurações do app. `c` agrupa os dados e as ações que continuam no app.js:
 	// c.sessoes, c.ativa, c.prefs, c.push, c.alertasPush, c.appNome, c.appUrl, c.host, c.nomeNo(conta),
@@ -39,7 +39,7 @@
 			<button type="button" class="ro-linha acc-row" class:active={ativa} aria-current={ativa ? 'true' : undefined} onclick={() => !ativa && c.trocarConta(s)}>
 				<span class="ro-linha__inicio"><img class="ro-avatar avatar" src={c.url(s.account.avatar)} alt="" /></span>
 				<span class="ro-linha__corpo">
-					<span class="ro-linha__titulo"><NoDom no={c.nomeNo(s.account)} /></span>
+					<span class="ro-linha__titulo"><NomeConta conta={s.account} /></span>
 					<span class="ro-linha__sub">@{s.account.acct}@{s.host}</span>
 				</span>
 				{#if ativa}<span class="ro-linha__fim"><Icone nome="check" tamanho={18} /></span>{/if}

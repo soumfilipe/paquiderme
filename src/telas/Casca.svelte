@@ -64,7 +64,7 @@
 		{/key}
 	{:else}
 		{@const a = perfil.account}
-		<Cabecalho titulo={c.nomeNo(a)} aoVoltar={raiz ? null : c.fecharPerfil}
+		<Cabecalho titulo={{ conta: a }} aoVoltar={raiz ? null : c.fecharPerfil}
 			acoes={raiz ? [{ aria: 'Trocar de conta', icone: 'users', aoClicar: c.contas }, { aria: 'Configurações do app', icone: 'settings', aoClicar: c.abrirConfiguracoes }] : []} />
 		<Perfil c={c.perfil(perfil)} />
 		<BarraAbas itens={segs(c.segsPerfil(perfil))} valor={perfil.seg} aoMudar={(id) => c.mudarSegPerfil(perfil, id)} sob nome="Perfil" />

@@ -1,7 +1,7 @@
 <script>
 	import Publicacao from './Publicacao.svelte';
 	import RodapeLista from './RodapeLista.svelte';
-	import NoDom from './NoDom.svelte';
+	import NomeConta from './NomeConta.svelte';
 
 	// Avisos (notificações agrupadas), menções e mensagens diretas. `st` é a lista reativa do tipo mostrado;
 	// `c` traz do app o que ainda vive em JS (publicação, nomes com emojis, abrir perfil e conversa).
@@ -64,7 +64,7 @@
 
 {#snippet linhaNomes(contas)}
 	{@const n = nomes(contas)}
-	<strong class="link-name" role="button" tabindex="0" onclick={() => c.openProfile(n.mostrados[0])} onkeydown={(e) => e.key === 'Enter' && c.openProfile(n.mostrados[0])}><NoDom no={c.nameNode(n.mostrados[0])} /></strong>{#if n.mostrados[1]}{n.resto > 0 ? ', ' : ' e '}<strong class="link-name" role="button" tabindex="0" onclick={() => c.openProfile(n.mostrados[1])} onkeydown={(e) => e.key === 'Enter' && c.openProfile(n.mostrados[1])}><NoDom no={c.nameNode(n.mostrados[1])} /></strong>{/if}{n.resto > 0 ? ` e mais ${n.resto}` : ''}
+	<strong class="link-name" role="button" tabindex="0" onclick={() => c.openProfile(n.mostrados[0])} onkeydown={(e) => e.key === 'Enter' && c.openProfile(n.mostrados[0])}><NomeConta conta={n.mostrados[0]} /></strong>{#if n.mostrados[1]}{n.resto > 0 ? ', ' : ' e '}<strong class="link-name" role="button" tabindex="0" onclick={() => c.openProfile(n.mostrados[1])} onkeydown={(e) => e.key === 'Enter' && c.openProfile(n.mostrados[1])}><NomeConta conta={n.mostrados[1]} /></strong>{/if}{n.resto > 0 ? ` e mais ${n.resto}` : ''}
 {/snippet}
 
 {#snippet pilha(contas)}
@@ -85,7 +85,7 @@
 	<div class="ro-linha account-row" role="button" tabindex="0" onclick={() => c.openProfile(a)} onkeydown={(e) => e.key === 'Enter' && c.openProfile(a)}>
 		<span class="ro-linha__inicio"><img class="ro-avatar avatar" src={c.safeUrl(a.avatar_static || a.avatar)} alt="" loading="lazy" /></span>
 		<span class="ro-linha__corpo who">
-			<span class="ro-linha__titulo name"><NoDom no={c.nameNode(a)} /></span>
+			<span class="ro-linha__titulo name"><NomeConta conta={a} /></span>
 			<span class="ro-linha__sub acct">@{a.acct}</span>
 		</span>
 	</div>
@@ -94,7 +94,7 @@
 {#snippet aviso(n)}
 	<div class="notif">
 		<div class="notif-kind">
-			<strong class="link-name" role="button" tabindex="0" onclick={() => c.openProfile(n.account)} onkeydown={(e) => e.key === 'Enter' && c.openProfile(n.account)}><NoDom no={c.nameNode(n.account)} /></strong>
+			<strong class="link-name" role="button" tabindex="0" onclick={() => c.openProfile(n.account)} onkeydown={(e) => e.key === 'Enter' && c.openProfile(n.account)}><NomeConta conta={n.account} /></strong>
 			{TIPOS[n.type] || n.type} · {c.timeAgo(n.created_at)}
 		</div>
 		{#if n.status}<Publicacao s={n.status} {c} />{:else}{@render contaSimples(n.account)}{/if}

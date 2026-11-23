@@ -559,54 +559,6 @@ async function statusMenu(sh) {
   openSheet(null, items);
 }
 
-function cardEl(c) {
-  if (!c || !c.url || !(c.title || c.description)) return null;
-  let host = '';
-  try { host = new URL(c.url).hostname.replace(/^www\./, ''); } catch { return null; }
-  const img = c.image ? h('img', { class: 'card-img', src: safeUrl(c.image), alt: '', loading: 'lazy', width: c.width || null, height: c.height || null }) : null;
-  return h('a', { class: `link-card${img ? '' : ' no-img'}`, href: safeUrl(c.url), target: '_blank', rel: 'noopener noreferrer' },
-    img,
-    h('div', { class: 'card-text' },
-      h('span', { class: 'card-site' }, c.provider_name || host),
-      h('strong', { class: 'card-title' }, c.title || host),
-      c.description ? h('span', { class: 'card-desc' }, c.description) : null));
-}
-
-function mediaEl(sh) {
-  const items = (sh.media_attachments || []).filter((m) => safeUrl(m.url));
-  if (!items.length) return null;
-  const wrap = h('div', { class: `media${items.length === 1 ? ' one' : ''}${sh.sensitive && !prefs.showSensitive ? ' sensitive' : ''}` });
-  for (const m of items) {
-    const src = safeUrl(m.url);
-    const preview = safeUrl(m.preview_url || '');
-    let node;
-    if (m.type === 'image') {
-      node = h('img', { src: preview || src, alt: m.description || '', loading: 'lazy', class: 'zoomable' });
-      node.addEventListener('click', (ev) => {
-        if (wrap.classList.contains('sensitive')) return; // o primeiro toque só revela
-        ev.stopPropagation();
-        const imgs = items.filter((x) => x.type === 'image');
-        openViewer(imgs.map((x) => ({ full: safeUrl(x.url), alt: x.description || '' })), imgs.indexOf(m));
-      });
-    } else if (m.type === 'gifv') {
-      node = h('video', { src, poster: preview || null, autoplay: true, loop: true, muted: true, playsinline: true });
-      node.muted = true;
-    } else if (m.type === 'video') {
-      node = h('video', { src, poster: preview || null, controls: true, playsinline: true, preload: 'metadata' });
-    } else if (m.type === 'audio') {
-      node = h('audio', { src, controls: true, preload: 'none' });
-    } else {
-      node = h('a', { href: src, target: '_blank', rel: 'noopener noreferrer' }, m.description || 'Anexo');
-    }
-    wrap.append(node);
-  }
-  if (sh.sensitive && !prefs.showSensitive) {
-    wrap.title = 'Conteúdo sensível — toque para mostrar';
-    wrap.addEventListener('click', () => wrap.classList.remove('sensitive'), { once: true });
-  }
-  return wrap;
-}
-
 // Filtros do servidor: publicações que casam com um filtro viram um aviso recolhido
 const revealed = new Set();
 const translations = new SvelteMap(); // id da publicação -> { content, lang, provider, shown }
@@ -616,24 +568,18 @@ function filterHits(s) {
   return list.map((x) => x.filter).filter(Boolean);
 }
 
-function quoteEl(q, host) {
-  const qs = q.quoted_status;
-  if (!qs || q.state !== 'accepted') {
-    const why = { pending: 'Citação aguardando aprovação', rejected: 'Citação não autorizada', revoked: 'Citação removida', deleted: 'Publicação citada excluída', unauthorized: 'Publicação citada indisponível', blocked_account: 'Publicação de conta bloqueada', blocked_domain: 'Publicação de domínio bloqueado', muted_account: 'Publicação de conta silenciada' }[q.state];
-    return why ? h('div', { class: 'quote muted small' }, why) : null;
-  }
-  const a = qs.account;
-  return h('div', { class: 'quote', role: 'button', tabindex: '0', onclick: () => openThread(qs, host), onkeydown: (e) => { if (e.key === 'Enter') openThread(qs, host); } },
-    h('div', { class: 'quote-head' }, h('img', { class: 'ro-avatar avatar sm', src: safeUrl(a.avatar_static || a.avatar), alt: '', loading: 'lazy' }), h('strong', {}, nameNode(a)), h('span', { class: 'acct' }, '@' + a.acct)),
-    qs.spoiler_text ? h('p', { class: 'muted small' }, qs.spoiler_text) : h('div', { class: 'quote-body' }, sanitizeHtml(qs.content, qs.emojis)));
-}
-
 // Publicação (Svelte): tudo o que a tela precisa e ainda vive em JS passa por este objeto.
 let publicacaoCtx = null;
 const mkPublicacaoCtx = () => ({
-  canon, revealed, translations, filterHits, sanitizeHtml, plainText, mediaEl, pollEl, cardEl, quoteEl, nameNode, emojiFragment, safeUrl, timeAgo,
+  canon, revealed, translations, filterHits, sanitizeHtml, plainText, safeUrl, timeAgo, abrirVisualizador: openViewer,
   openAccountFrom, openHistory, openComposer, boostSheet, toggle, toggleBookmark, statusMenu, translateStatus, toast,
   limits: () => limits, prefs: () => prefs,
+  enquete: {
+    eu: () => session.account.id, restante: fmtRemaining, toast,
+    votar: async (s, escolhas) => { const poll = await api(`/api/v1/polls/${s.poll.id}/votes`, { method: 'POST', body: { choices: escolhas } }); atualizar({ ...s, poll }); },
+    atualizarEnquete: async (s) => { const poll = await api(`/api/v1/polls/${s.poll.id}`); atualizar({ ...s, poll }); },
+  },
+  citacao: { abrirConversa: openThread, html: sanitizeHtml },
   abrirRespondida: async (sh) => { try { openThread(await api(`/api/v1/statuses/${sh.in_reply_to_id}`)); } catch (err) { toast(err.message); } },
 });
 
@@ -946,64 +892,6 @@ function fmtRemaining(iso) {
   const hr = Math.round(m / 60);
   if (hr < 48) return `encerra em ${hr} h`;
   return `encerra em ${Math.round(hr / 24)} dias`;
-}
-
-function pollEl(sh, { readonly = false } = {}) {
-  const p = sh.poll;
-  const box = h('div', { class: 'poll' });
-  const hasCounts = p.options.every((o) => o.votes_count != null);
-  const showBars = hasCounts && (readonly || p.voted || p.expired || p.options.some((o) => o.votes_count > 0) || sh.account.id === session.account.id);
-  const canVote = !readonly && !p.voted && !p.expired && sh.account.id !== session.account.id;
-  const base = (p.multiple ? p.voters_count : p.votes_count) || p.votes_count || 0;
-  const picked = new Set();
-  const rebuild = () => box.replaceWith(pollEl(sh, { readonly }));
-  const mine = new Set(p.own_votes || []);
-
-  if (canVote) {
-    const voteBtn = h('button', { type: 'button', class: 'ro-botao ro-botao--principal', disabled: true }, 'Votar');
-    p.options.forEach((o, i) => {
-      const b = h('button', { type: 'button', class: 'poll-choice', role: p.multiple ? 'checkbox' : 'radio', 'aria-checked': 'false' },
-        h('span', { class: `pick-box${p.multiple ? '' : ' round'}` }), emojiFragment(o.title, p.emojis));
-      b.addEventListener('click', () => {
-        if (p.multiple) { if (picked.has(i)) picked.delete(i); else picked.add(i); }
-        else { picked.clear(); picked.add(i); }
-        box.querySelectorAll('.poll-choice').forEach((x, j) => {
-          const on = picked.has(j);
-          x.classList.toggle('on', on);
-          x.setAttribute('aria-checked', on ? 'true' : 'false');
-          x.querySelector('.pick-box').replaceChildren(...(on ? [svgIcon('check', 14)] : []));
-        });
-        voteBtn.disabled = picked.size === 0;
-      });
-      box.append(b);
-    });
-    voteBtn.addEventListener('click', async () => {
-      voteBtn.disabled = true;
-      try {
-        sh.poll = await api(`/api/v1/polls/${p.id}/votes`, { method: 'POST', body: { choices: [...picked] } });
-        rebuild();
-      } catch (e) { toast(e.message); voteBtn.disabled = false; }
-    });
-    box.append(voteBtn);
-  } else {
-    p.options.forEach((o, i) => {
-      const pct = showBars && base ? Math.round((o.votes_count / base) * 100) : 0;
-      box.append(h('div', { class: `poll-row${mine.has(i) ? ' mine' : ''}` },
-        showBars ? h('span', { class: 'poll-bar', style: `width:${pct}%` }) : null,
-        h('span', { class: 'poll-label' }, mine.has(i) ? svgIcon('check', 14) : null, emojiFragment(o.title, p.emojis)),
-        showBars ? h('span', { class: 'poll-pct' }, `${pct}%`) : null));
-    });
-  }
-  const votes = p.voters_count != null ? p.voters_count : p.votes_count;
-  const meta = [`${votes == null ? '?' : votes} ${votes === 1 ? 'voto' : 'votos'}`, p.expired ? 'encerrada' : fmtRemaining(p.expires_at)];
-  const foot = h('div', { class: 'poll-foot muted small' }, meta.join(' · '));
-  if (!readonly && !p.expired) {
-    foot.append(' · ', h('button', { type: 'button', class: 'link', onclick: async () => {
-      try { sh.poll = await api(`/api/v1/polls/${p.id}`); rebuild(); } catch (e) { toast(e.message); }
-    } }, 'Atualizar'));
-  }
-  box.append(foot);
-  return box;
 }
 
 /* ---------- Avisos não lidos (sino) ---------- */
@@ -1406,7 +1294,7 @@ async function loadAccountsEntry(e, append) {
   }
 }
 
-function contaCtx() { return { url: safeUrl, nomeNo: nameNode, abrir: openProfile }; }
+function contaCtx() { return { url: safeUrl, abrir: openProfile }; }
 
 function accountsEntryTela(e) {
   return { titulo: e.title, aoVoltar: closeProfile, Tela: ContasEntrada, props: {
@@ -2126,11 +2014,10 @@ function cascaCtx() {
     abrirConfiguracoes: () => { state.settingsOpen = true; window.scrollTo(0, 0); loadPush(); },
     contas: accountsSheet,
     contaId: session && session.account.id,
-    nomeNo: nameNode,
     segsPerfil: profileSegs,
     mudarSegPerfil: setProfileSeg,
     perfil: (p) => ({
-      p, self: p.account.id === session.account.id, seguirNo: () => followBtn(p), url: safeUrl, nomeNo: nameNode, html: sanitizeHtml, emoji: emojiFragment,
+      p, self: p.account.id === session.account.id, seguirNo: () => followBtn(p), url: safeUrl, html: sanitizeHtml,
       contar: fmtCount, arroba: fullAcct,
       editar: openEditProfile, listas: () => openListPicker(p.account), menu: () => accountMenu(p.account, p.rel),
       abrirPerfil: openProfile, abrirTag: openTag, abrirGente: (tipo) => openPeople(p, tipo),
@@ -2144,7 +2031,7 @@ function cascaCtx() {
       return {
         sessoes: sessions(), ehAtiva: (s) => session && sameAcc(s, session), trocarConta: activate,
         prefs, push: pushState, alertasPush: PUSH_ALERTS, appNome: APP_NAME, appUrl: APP_URL, host: session.host,
-        nomeNo: nameNode, url: safeUrl,
+        url: safeUrl,
         definirPref: setPref, setPushAlert, ativarPush: enablePush, desativarPush: disablePush,
         adicionarConta: addAccount, atualizarApp: updateApp, sair: () => logout(),
         copiar: async (t) => { try { await navigator.clipboard.writeText(t); toast('Endereço copiado'); } catch { toast('Não consegui copiar'); } },
@@ -2604,7 +2491,7 @@ function suggestUpdate() {
     try {
       if (tok.kind === '@') {
         const r = await api('/api/v1/accounts/search', { params: { q: tok.q, limit: 6, resolve: false } });
-        items = r.map((x) => ({ insert: `@${x.acct}`, label: nameNode(x), sub: `@${x.acct}`, img: x.avatar_static || x.avatar, round: true }));
+        items = r.map((x) => ({ insert: `@${x.acct}`, label: { conta: x }, sub: `@${x.acct}`, img: x.avatar_static || x.avatar, round: true }));
       } else if (tok.kind === '#') {
         const r = await api('/api/v2/search', { params: { q: tok.q, type: 'hashtags', limit: 6 } });
         items = (r.hashtags || []).map((x) => ({ insert: `#${x.name}`, label: `#${x.name}`, sub: '' }));

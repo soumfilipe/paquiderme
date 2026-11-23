@@ -1,6 +1,8 @@
 <script>
 	import { Icone } from 'rochedo/svelte';
 	import NoDom from './NoDom.svelte';
+	import NomeConta from './NomeConta.svelte';
+	import Emoji from './Emoji.svelte';
 
 	// Cabeçalho de um perfil: banner, avatar, ações, selos, bio, campos e contagens.
 	// `c` traz o que continua no app.js: p (entrada do perfil), self, seguirNo (botão de seguir, feito em JS),
@@ -39,7 +41,7 @@
 			</div>
 		{/if}
 	</div>
-	<h2 class="profile-name"><NoDom no={c.nomeNo(a)} /></h2>
+	<h2 class="profile-name"><NomeConta conta={a} /></h2>
 	<div class="handle">@{c.arroba(a)}</div>
 	{#if selos.length}
 		<div class="badges">
@@ -63,7 +65,7 @@
 		<dl class="fields">
 			{#each campos as f, i (i)}
 				<div class="field">
-					<dt><NoDom no={c.emoji(f.name || '', a.emojis)} /></dt>
+					<dt><Emoji texto={f.name || ''} emojis={a.emojis} /></dt>
 					<dd class:verified={f.verified_at}><NoDom no={c.html(f.value, a.emojis)} />{#if f.verified_at}<Icone nome="check" tamanho={16} />{/if}</dd>
 				</div>
 			{/each}
