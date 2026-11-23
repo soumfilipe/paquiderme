@@ -18,7 +18,7 @@ npm run build    # gera dist/ (inclui o service worker com a lista de arquivos e
 O `sw.js` da raiz é só o modelo; o build gera o de `dist/`.
 
 ## Publicação
-`.github/workflows/pages.yml` constrói e publica `dist/` no GitHub Pages a cada push em `principal` (em *Settings → Pages* a fonte precisa ser **GitHub Actions**). `.github/workflows/verificar.yml` roda lint, build e `npm audit` em cada pull request. O domínio próprio fica no arquivo `CNAME`. No iPhone: abra no Safari → Compartilhar → *Adicionar à Tela de Início* e faça o login **de dentro do app instalado**.
+`.github/workflows/pages.yml` constrói e publica `dist/` no GitHub Pages a cada push em `principal` (em *Settings → Pages* a fonte precisa ser **GitHub Actions**). `.github/workflows/verificar.yml` roda lint, build, `npm audit` e os testes e2e em cada pull request. O domínio próprio fica no arquivo `CNAME`. No iPhone: abra no Safari → Compartilhar → *Adicionar à Tela de Início* e faça o login **de dentro do app instalado**.
 
 ## Como uma versão nova chega
 O service worker novo baixa em segundo plano e espera; o app mostra "nova versão do app · atualizar" (`src/telas/AvisoAtualizacao.svelte`). Ao tocar, o SW novo assume (`SKIP_WAITING`) e a página recarrega. Nada recarrega sozinho, para não perder um rascunho. Plano B: Configurações → *Atualizar o app (limpar cache)*.
@@ -32,7 +32,7 @@ O service worker novo baixa em segundo plano e espera; o app mostra "nova versã
 
 ## Manutenção
 - Dependências: Dependabot semanal (npm) e mensal (Actions). Atualizar o Rochedo: `npm i github:soumfilipe/rochedo#vX.Y.Z`.
-- Testes: os testes de ponta a ponta (Playwright, com a API simulada) ainda ficam fora deste repositório; trazê-los para cá e rodá-los no CI é o próximo passo de qualidade.
+- Testes: `tests/e2e/` tem 36 testes de ponta a ponta (Playwright em Python, com a API do Mastodon simulada por rotas). `pip install playwright` e `npm run test:e2e` (constrói e roda tudo em ~1 min; use `CHROME_PATH` se não quiser o Chromium do Playwright). Para rodar só alguns: `python3 tests/e2e/rodar.py enquete 12`. Cada arquivo é independente e traz a própria API simulada. Rodam também em cada pull request.
 - Ao mexer em telas, mantenha o estado em `src/*.svelte.js` (objetos dentro de `$state` precisam ser trocados, não mutados, quando forem `Set`/`Map`).
 
 ## Créditos
