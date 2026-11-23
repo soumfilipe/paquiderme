@@ -1,7 +1,7 @@
 <script>
 	import NomeConta from './NomeConta.svelte';
 
-	/** Linha de uma conta (avatar, nome, @) com um botão à direita. `c` traz url(), nomeNo(conta) e abrir(conta). */
+	/** Linha de uma conta (avatar, nome, @) com um botão à direita. `c` traz url() e abrir(conta). */
 	let { conta, rotulo, aoClicar, c, classe = '' } = $props();
 	const abrir = () => c.abrir(conta);
 </script>

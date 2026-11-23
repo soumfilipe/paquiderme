@@ -3,7 +3,7 @@
 	import NomeConta from './NomeConta.svelte';
 
 	// Configurações do app. `c` agrupa os dados e as ações que continuam no app.js:
-	// c.sessoes, c.ativa, c.prefs, c.push, c.alertasPush, c.appNome, c.appUrl, c.host, c.nomeNo(conta),
+	// c.sessoes, c.ativa, c.prefs, c.push, c.alertasPush, c.appNome, c.appUrl, c.host,
 	// c.definirPref(chave, valor), c.setPushAlert(chave, valor), c.ativarPush(), c.desativarPush(),
 	// c.adicionarConta(), c.atualizarApp(), c.sair(), c.trocarConta(sessao), c.copiar(texto), c.abrir(nome)
 	let { c } = $props();

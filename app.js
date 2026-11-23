@@ -1,6 +1,6 @@
 import {
   OOB, b64url, randomString, pkceChallenge, normalizeHost,
-  sanitizeHtml, emojiFragment, safeUrl, timeAgo, h, svgIcon, sparkline, parseNextMaxId,
+  safeUrl, timeAgo, h, svgIcon, sparkline, parseNextMaxId,
 } from './lib.js';
 import 'rochedo';
 import './style.css';
@@ -9,6 +9,8 @@ import { registrar, canon, atualizar, esquecer, limpar as limparPublicacoes } fr
 import { ambiente } from './src/ambiente.svelte.js';
 import Casca from './src/telas/Casca.svelte';
 import Estado from './src/telas/Estado.svelte';
+import ContasFolha from './src/telas/ContasFolha.svelte';
+import HistoricoFolha from './src/telas/HistoricoFolha.svelte';
 import Compositor from './src/telas/Compositor.svelte';
 import { ajustarJanela } from './src/composicaoGestos.js';
 import Publicacao from './src/telas/Publicacao.svelte';
@@ -331,10 +333,6 @@ async function api(path, { method = 'GET', params, body, form, headers = {}, hos
 
 /* ---------- Renderização ---------- */
 
-function nameNode(account) {
-  return h('span', {}, emojiFragment(account.display_name || account.username, account.emojis));
-}
-
 function hydrateIcons(root = document) {
   root.querySelectorAll('[data-icon]').forEach((el) => {
     el.replaceChildren(svgIcon(el.dataset.icon, Number(el.dataset.size) || 24));
@@ -385,8 +383,15 @@ async function toggleBookmark(btn, sh) {
 // Adaptador fino sobre a folha do Rochedo: mantém a assinatura antiga (label/icon/danger/onclick/keepOpen).
 const sheetEl = () => document.querySelector('dialog.ro-folha[open]');
 function closeSheet() { const d = sheetEl(); if (d) d.close(); }
+// `content`: um nó de DOM ou { Tela, props } para uma tela Svelte (desmontada quando a folha fecha)
 function openSheet(title, items, content) {
   closeSheet();
+  let viva = null;
+  if (content && content.Tela) {
+    const alvo = document.createElement('div');
+    viva = mount(content.Tela, { target: alvo, props: content.props });
+    content = alvo;
+  }
   abrirFolha({
     titulo: title || undefined,
     conteudo: content || undefined,
@@ -395,6 +400,7 @@ function openSheet(title, items, content) {
       href: it.href ? safeUrl(it.href) : undefined,
     })),
   });
+  if (viva) sheetEl().addEventListener('close', () => unmount(viva), { once: true });
 }
 
 // Some das listas as publicações de uma conta que acabou de ser silenciada/bloqueada
@@ -504,12 +510,8 @@ async function translateStatus(sh) {
 async function openHistory(sh) {
   openSheet('Histórico de edições', [], h('p', { class: 'muted' }, 'Carregando…'));
   try {
-    const list = await api(`/api/v1/statuses/${sh.id}/history`);
-    const box = h('div', { class: 'history' }, ...list.slice().reverse().map((v, i) => h('div', { class: 'hist-item' },
-      h('div', { class: 'muted small' }, `${i === 0 ? 'Atual · ' : ''}${new Date(v.created_at).toLocaleString('pt-BR')}`),
-      v.spoiler_text ? h('div', { class: 'hist-cw' }, emojiFragment(v.spoiler_text, v.emojis)) : null,
-      h('div', { class: 'body' }, sanitizeHtml(v.content, v.emojis)))));
-    openSheet('Histórico de edições', [], box);
+    const versoes = await api(`/api/v1/statuses/${sh.id}/history`);
+    openSheet('Histórico de edições', [], { Tela: HistoricoFolha, props: { versoes } });
   } catch (e) { toast(e.message); closeSheet(); }
 }
 
@@ -573,7 +575,7 @@ function filterHits(s) {
 // Publicação (Svelte): tudo o que a tela precisa e ainda vive em JS passa por este objeto.
 let publicacaoCtx = null;
 const mkPublicacaoCtx = () => ({
-  canon, revealed, translations, filterHits, sanitizeHtml, plainText, safeUrl, timeAgo, abrirVisualizador: openViewer,
+  canon, revealed, translations, filterHits, plainText, safeUrl, timeAgo, abrirVisualizador: openViewer,
   openAccountFrom, openHistory, openComposer, boostSheet, toggle, toggleBookmark, statusMenu, translateStatus, toast,
   limits: () => limits, prefs: () => prefs,
   enquete: {
@@ -581,7 +583,7 @@ const mkPublicacaoCtx = () => ({
     votar: async (s, escolhas) => { const poll = await api(`/api/v1/polls/${s.poll.id}/votes`, { method: 'POST', body: { choices: escolhas } }); atualizar({ ...s, poll }); },
     atualizarEnquete: async (s) => { const poll = await api(`/api/v1/polls/${s.poll.id}`); atualizar({ ...s, poll }); },
   },
-  citacao: { abrirConversa: openThread, html: sanitizeHtml },
+  citacao: { abrirConversa: openThread },
   abrirRespondida: async (sh) => { try { openThread(await api(`/api/v1/statuses/${sh.in_reply_to_id}`)); } catch (err) { toast(err.message); } },
 });
 
@@ -1803,18 +1805,6 @@ function followBtn(p) {
 }
 
 
-function accountRowEl(s) {
-  const active = session && sameAcc(s, session);
-  const acc = s.account;
-  return h('button', { type: 'button', class: `ro-linha acc-row${active ? ' active' : ''}`, 'aria-current': active ? 'true' : null,
-    onclick: () => { if (active) { closeSheet(); return; } activate(s); } },
-    h('span', { class: 'ro-linha__inicio' }, h('img', { class: 'ro-avatar avatar', src: safeUrl(acc.avatar), alt: '' })),
-    h('span', { class: 'ro-linha__corpo' },
-      h('span', { class: 'ro-linha__titulo' }, nameNode(acc)),
-      h('span', { class: 'ro-linha__sub' }, `@${acc.acct}@${s.host}`)),
-    active ? h('span', { class: 'ro-linha__fim' }, svgIcon('check', 18)) : null);
-}
-
 function addAccount() {
   closeSheet();
   state.settingsOpen = false;
@@ -1824,7 +1814,7 @@ function addAccount() {
 function accountsSheet() {
   openSheet('Contas', [
     { label: 'Adicionar conta', icon: 'user-add', onclick: addAccount },
-  ], h('div', { class: 'acc-list' }, ...sessions().map(accountRowEl)));
+  ], { Tela: ContasFolha, props: { sessoes: sessions(), ativa: session, trocar: activate, fechar: closeSheet } });
 }
 
 /* ----- Explorar ----- */
@@ -2019,7 +2009,7 @@ function cascaCtx() {
     segsPerfil: profileSegs,
     mudarSegPerfil: setProfileSeg,
     perfil: (p) => ({
-      p, self: p.account.id === session.account.id, seguirNo: () => followBtn(p), url: safeUrl, html: sanitizeHtml,
+      p, self: p.account.id === session.account.id, seguirNo: () => followBtn(p), url: safeUrl,
       contar: fmtCount, arroba: fullAcct,
       editar: openEditProfile, listas: () => openListPicker(p.account), menu: () => accountMenu(p.account, p.rel),
       abrirPerfil: openProfile, abrirTag: openTag, abrirGente: (tipo) => openPeople(p, tipo),

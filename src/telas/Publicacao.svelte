@@ -1,5 +1,5 @@
 <script>
-	import NoDom from './NoDom.svelte';
+	import Corpo from './Corpo.svelte';
 	import NomeConta from './NomeConta.svelte';
 	import Emoji from './Emoji.svelte';
 	import Midia from './Midia.svelte';
@@ -28,7 +28,7 @@
 	const nomesFiltro = $derived([...new Set(filtros.map((f) => f.title))].join(', '));
 
 	const traducao = $derived(c.translations.get(id));
-	const corpo = $derived(c.sanitizeHtml(traducao && traducao.shown ? traducao.content : conteudo, emojis));
+	const htmlCorpo = $derived(traducao && traducao.shown ? traducao.content : conteudo);
 	const longo = $derived(c.plainText(conteudo).length > 600 || (conteudo.match(/<br|<\/p>/g) || []).length > 10);
 	let recolhido = $state(true);
 	let traduzindo = $state(false);
@@ -98,7 +98,7 @@
 		</header>
 
 		{#snippet conteudoPub()}
-			<div class="body" class:clamp={longo && recolhido}><NoDom no={corpo} /></div>
+			<div class="body" class:clamp={longo && recolhido}><Corpo html={htmlCorpo} {emojis} /></div>
 			{#if longo}<button type="button" class="link more-text" onclick={alternarTexto}>{recolhido ? 'Mostrar mais' : 'Mostrar menos'}</button>{/if}
 			{#if podeTraduzir}
 				{#if traducao}
