@@ -1,6 +1,6 @@
 <script>
 	import { estado as st } from '../estado.svelte.js';
-	import { gatilho } from '../casca.svelte.js';
+	import { ambiente } from '../ambiente.svelte.js';
 	import Cabecalho from './Cabecalho.svelte';
 	import Conversa from './Conversa.svelte';
 	import BarraAbas from './BarraAbas.svelte';
@@ -25,9 +25,8 @@
 	const perfil = $derived(topo ? (topo.type ? null : topo) : st.tab === 'account' ? st.me : null);
 	const raiz = $derived(perfil && perfil === st.me && st.profiles.length === 0);
 	const ex = $derived(st.explore);
-	// partes do app que não são reativas (alarme, contas salvas, preferências) são relidas quando o gatilho muda
-	const alarme = $derived((gatilho.v, c.alarme()));
-	const outras = $derived((gatilho.v, c.instanciasSalvas()));
+	// barra de busca fixa e pílula de novas publicações (fora da casca, no index.html) seguem o estado
+	$effect(() => c.sincronizar());
 
 	const lista = (tipo) => (tipo === 'list' ? st.listTl : st[tipo]);
 	const tipoAvisos = $derived(st.notifTab === 'mentions' ? 'mentions' : st.notifTab === 'dms' ? 'convs' : 'notifications');
@@ -56,7 +55,7 @@
 {:else if perfil}
 	{#if raiz && st.settingsOpen}
 		<Cabecalho titulo="Configurações" aoVoltar={c.fecharConfiguracoes} />
-		<Configuracoes c={(gatilho.v, c.configuracoes())} />
+		<Configuracoes c={c.configuracoes()} />
 	{:else if perfil.people}
 		<Cabecalho titulo={perfil.people === 'followers' ? 'Seguidores' : 'Seguindo'} aoVoltar={() => c.fecharGente(perfil)} />
 		{#key perfil.people}
@@ -87,8 +86,8 @@
 		{/key}
 	{/if}
 {:else if st.tab === 'home'}
-	{#if alarme}
-		<div class="alarm" role="status"><span>{alarme}</span><button type="button" class="link" onclick={c.verStatus}>Ver status</button></div>
+	{#if ambiente.alarme}
+		<div class="alarm" role="status"><span>{ambiente.alarme}</span><button type="button" class="link" onclick={c.verStatus}>Ver status</button></div>
 	{/if}
 	<BarraAbas itens={[{ id: '', rotulo: 'Início' }, ...st.lists.items.map((l) => ({ id: l.id, rotulo: l.title }))]}
 		valor={st.homeList || ''} aoMudar={c.mudarLista} nome="Início e listas"
@@ -120,7 +119,7 @@
 		{:else if ex.seg === 'tags'}
 			<HashtagsSeguidas f={st.followedTags} aoTentar={c.carregarHashtags} aoAbrir={c.abrirTag} aoDeixar={c.deixarTag} />
 		{:else if ex.seg === 'other'}
-			<OutraInstancia host={ex.otherHost} salvas={outras} aoIr={c.irOutra} />
+			<OutraInstancia host={ex.otherHost} salvas={ambiente.outras} aoIr={c.irOutra} />
 			{#if ex.otherHost}{@render linha('other', { readonly: true, host: ex.otherHost })}{/if}
 		{:else}
 			{@render linha(ex.seg)}
