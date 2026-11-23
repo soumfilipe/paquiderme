@@ -6,10 +6,7 @@
 	// Gerenciar listas. `L`: state.lists { items, error, loading, loaded }; `e`: { editing }.
 	// aoCriar, aoAbrir(l), aoMembros(l), aoRenomear(l, titulo), aoExcluir(l), aoEditar(id|null), aoRecarregar ficam no app.
 	let { L, e, aoCriar, aoAbrir, aoMembros, aoRenomear, aoExcluir, aoEditar, aoRecarregar } = $props();
-	let novoNome = $state('');
-	$effect(() => {
-		novoNome = L.items.find((l) => l.id === e.editing)?.title ?? '';
-	});
+	let novoNome = $derived(L.items.find((l) => l.id === e.editing)?.title ?? '');
 </script>
 
 <NovaLista {aoCriar} />

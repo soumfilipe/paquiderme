@@ -1,6 +1,6 @@
 <script>
 	import { onMount } from 'svelte';
-	import { ui, limites } from '../composicao.svelte.js';
+	import { ui } from '../composicao.svelte.js';
 	import { arrastarParaFechar, bloquearRolagemDeFundo, acompanharTeclado } from '../composicaoGestos.js';
 	import ComposicaoExtras from './ComposicaoExtras.svelte';
 	import ComposicaoSugestoes from './ComposicaoSugestoes.svelte';

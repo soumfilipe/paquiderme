@@ -1,8 +1,7 @@
 import { defineConfig } from 'vite';
 import { svelte } from '@sveltejs/vite-plugin-svelte';
 
-// Fase 1: o app continua em módulos ES simples; o Vite só empacota. O Svelte já está ligado
-// para as telas novas (arquivos .svelte) entrarem uma a uma, sem mexer no resto.
+// Vite empacota o app (app.js + telas Svelte em src/telas).
 // Manifesto, ícones e marca ficam fora do empacotamento (o manifesto aponta para os ícones pelo nome
 // e o iOS pede o apple-touch-icon num endereço fixo): protege os links antes do Vite e restaura depois.
 const estaticos = () => [
