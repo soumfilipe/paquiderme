@@ -6,7 +6,9 @@ import 'rochedo';
 import './style.css';
 import { estado, reiniciar } from './src/estado.svelte.js';
 import { registrar, canon, atualizar, esquecer, limpar as limparPublicacoes } from './src/publicacoes.svelte.js';
-import { desmontarIlhas, ilha, montar, reativas } from './src/ilhas.js';
+import { ilha, montar } from './src/ilhas.js';
+import { gatilho } from './src/casca.svelte.js';
+import Casca from './src/telas/Casca.svelte';
 import LinhaDoTempo from './src/telas/LinhaDoTempo.svelte';
 import Avisos from './src/telas/Avisos.svelte';
 import BarraAbas from './src/telas/BarraAbas.svelte';
@@ -36,7 +38,7 @@ import Perfil from './src/telas/Perfil.svelte';
 import PerfilEdicao from './src/telas/PerfilEdicao.svelte';
 import AvisoAtualizacao from './src/telas/AvisoAtualizacao.svelte';
 import { iniciarAtualizacao } from './src/atualizacao.svelte.js';
-import { mount } from 'svelte';
+import { mount, unmount, flushSync } from 'svelte';
 import Configuracoes from './src/telas/Configuracoes.svelte';
 import { aviso } from 'rochedo/aviso.js';
 import { confirmar } from 'rochedo/confirmar.js';
@@ -270,6 +272,7 @@ function activate(s) {
   setUnread(false);
   appStarted = false;
   closeSheet();
+  if (casca) { unmount(casca); casca = null; }
   $('#view').replaceChildren();
   window.scrollTo(0, 0);
   startApp();
@@ -670,18 +673,6 @@ function setNotifTab(id) {
   if (!state[k].items.length && !state[k].loading) loadList(k);
 }
 
-function notificationsView(view) {
-  ilha(view, BarraAbas, { itens: NOTIF_TABS.map(([id, rotulo]) => ({ id, rotulo })), valor: state.notifTab, aoMudar: setNotifTab, nome: 'Avisos' });
-  const kind = state.notifTab === 'mentions' ? 'mentions' : state.notifTab === 'dms' ? 'convs' : 'notifications';
-  publicacaoCtx ||= mkPublicacaoCtx();
-  reativas.set(kind, getList(kind));
-  ilha(view, Avisos, {
-    tipo: kind, st: getList(kind), c: ctxLista(),
-    aoMais: () => loadList(kind, true),
-    aoTentar: () => loadList(kind, getList(kind).items.length > 0),
-  });
-}
-
 const plainText = (html) => { const d = new DOMParser().parseFromString(html || '', 'text/html').body; d.querySelectorAll('br').forEach((b) => b.replaceWith(' ')); return (d.textContent || '').replace(/\s+/g, ' ').trim(); };
 
 // Lista de publicações em Svelte: reage sozinha a carregamentos e novas publicações (sem render() global).
@@ -689,16 +680,6 @@ const plainText = (html) => { const d = new DOMParser().parseFromString(html || 
 function ctxLista() {
   publicacaoCtx ||= mkPublicacaoCtx();
   return { ...publicacaoCtx, api, openProfile, openThread, openTag, sparkline };
-}
-
-function timelineView(view, kind, { readonly = false, host = null, ocultar = null } = {}) {
-  publicacaoCtx ||= mkPublicacaoCtx();
-  reativas.set(kind, getList(kind));
-  ilha(view, LinhaDoTempo, {
-    st: getList(kind), readonly, host, ocultar, c: publicacaoCtx,
-    aoMais: () => loadList(kind, true),
-    aoTentar: () => loadList(kind, getList(kind).items.length > 0),
-  });
 }
 
 /* ----- Conversas (threads) ----- */
@@ -718,7 +699,7 @@ async function loadThread(t) {
   t.loading = true;
   t.error = null;
   busy(+1);
-  if (reativas.get('thread') !== t) render();
+  render();
   try {
     const opts = { host: t.host, auth: !t.host };
     const [ctx, fresh] = await Promise.all([
@@ -735,7 +716,7 @@ async function loadThread(t) {
     t.loading = false;
     busy(-1);
     if (session && aberta(t)) {
-      if (reativas.get('thread') !== t) render();
+      render();
       if (t.loaded && !t.scrolled) {
         t.scrolled = true;
         // depois de a tela reagir aos dados novos
@@ -743,12 +724,6 @@ async function loadThread(t) {
       }
     }
   }
-}
-
-function threadView(view, t) {
-  view.append(profileBar('Conversa', closeProfile));
-  reativas.set('thread', t);
-  ilha(view, Conversa, { t, c: ctxLista(), aoTentar: () => loadThread(t) });
 }
 
 /* ---------- Cache local (abrir offline e voltar de onde parou) ---------- */
@@ -1204,7 +1179,7 @@ function liveHome(s) {
   if (!st.items.length && !st.loaded) return; // ainda nem carregou: o carregamento já traz
   if (st.items.some((x) => x.id === s.id) || state.newPosts.some((x) => x.id === s.id)) return;
   const viewing = state.tab === 'home' && !state.homeList && state.profiles.length === 0;
-  if (viewing && atTop()) { st.items.unshift(s); if (reativas.get('home') !== st) render(); return; }
+  if (viewing && atTop()) { st.items.unshift(s); return; }
   state.newPosts.unshift(s);
   updatePill();
 }
@@ -1213,7 +1188,7 @@ function liveNotification(n) {
   const L = state.notifications;
   const viewing = state.tab === 'notifications' && state.profiles.length === 0;
   if (!L.items.some((x) => x.id === n.id) && (L.items.length || L.loaded)) { L.items.unshift(n); L.cached = false; }
-  if (viewing) { if (reativas.get('notifications') !== L) render(); markNotificationsRead(); } else { setUnread(true); ringBell(); }
+  if (viewing) { markNotificationsRead(); } else { setUnread(true); ringBell(); }
 }
 
 // Ao voltar para o app: busca o que chegou enquanto a conexão esteve fechada
@@ -1368,17 +1343,6 @@ async function quickHealth() {
 }
 function scheduleQuickHealth(ms = 1500) { clearTimeout(alarm.timer); alarm.timer = setTimeout(quickHealth, ms); }
 
-function homeView(view) {
-  const L = state.lists;
-  if (alarm.text) view.append(h('div', { class: 'alarm', role: 'status' }, h('span', {}, alarm.text), h('button', { type: 'button', class: 'link', onclick: openHealth }, 'Ver status')));
-  ilha(view, BarraAbas, {
-    itens: [{ id: '', rotulo: 'Início' }, ...L.items.map((l) => ({ id: l.id, rotulo: l.title }))],
-    valor: state.homeList || '', aoMudar: setHomeList, nome: 'Início e listas',
-    acao: { rotulo: 'Listas', icone: 'settings', aria: 'Gerenciar listas', aoClicar: openListsManage },
-  });
-  timelineView(view, state.homeList ? 'list' : 'home');
-}
-
 function setHomeList(id) {
   state.homeList = id || null;
   state.listTl = mkList();
@@ -1404,8 +1368,7 @@ function pushEntry(entry) {
 }
 
 function entryView(view, e) {
-  if (e.type === 'thread') threadView(view, e);
-  else if (e.type === 'lists') listsManageView(view, e);
+  if (e.type === 'lists') listsManageView(view, e);
   else if (e.type === 'members') membersView(view, e);
   else if (e.type === 'pick') listPickView(view, e);
   else if (e.type === 'accounts') accountsEntryView(view, e);
@@ -2045,64 +2008,6 @@ function accountsSheet() {
   ], h('div', { class: 'acc-list' }, ...sessions().map(accountRowEl)));
 }
 
-function settingsView(view) {
-  view.append(profileBar('Configurações', () => { state.settingsOpen = false; window.scrollTo(0, 0); render(); }));
-  const abrir = {
-    filtros: openFilters, agendadas: openScheduled, saude: openHealth,
-    silenciadas: () => openAccountsEntry('Contas silenciadas', '/api/v1/mutes', 'unmute', 'Reativar'),
-    bloqueadas: () => openAccountsEntry('Contas bloqueadas', '/api/v1/blocks', 'unblock', 'Desbloquear'),
-  };
-  ilha(view, Configuracoes, { c: {
-    sessoes: sessions(), ehAtiva: (s) => session && sameAcc(s, session), trocarConta: activate,
-    prefs, push: pushState, alertasPush: PUSH_ALERTS, appNome: APP_NAME, appUrl: APP_URL, host: session.host,
-    nomeNo: nameNode, url: safeUrl,
-    definirPref: setPref, setPushAlert, ativarPush: enablePush, desativarPush: disablePush,
-    adicionarConta: addAccount, atualizarApp: updateApp, sair: () => logout(),
-    copiar: async (t) => { try { await navigator.clipboard.writeText(t); toast('Endereço copiado'); } catch { toast('Não consegui copiar'); } },
-    abrir: (nome) => abrir[nome](),
-  } });
-}
-
-function profileView(view, p) {
-  const isRoot = p === state.me && state.profiles.length === 0;
-  if (isRoot && state.settingsOpen) { settingsView(view); return; }
-
-  if (p.people) {
-    view.append(profileBar(p.people === 'followers' ? 'Seguidores' : 'Seguindo', () => closePeople(p)));
-    reativas.set('p:' + p.people, getList('p:' + p.people));
-    ilha(view, ListaContas, { st: getList('p:' + p.people), c: ctxLista(),
-      aoMais: () => loadList('p:' + p.people, true), aoTentar: () => loadList('p:' + p.people, getList('p:' + p.people).items.length > 0) });
-    return;
-  }
-
-  const a = p.account;
-  const self = a.id === session.account.id;
-  const gear = isRoot ? [
-    { aria: 'Trocar de conta', icone: 'users', aoClicar: accountsSheet },
-    { aria: 'Configurações do app', icone: 'settings', aoClicar: () => { state.settingsOpen = true; window.scrollTo(0, 0); render(); loadPush(); } },
-  ] : [];
-  view.append(profileBar(nameNode(a), isRoot ? null : closeProfile, gear));
-
-  ilha(view, Perfil, { c: {
-    p, self, seguirNo: () => followBtn(p), url: safeUrl, nomeNo: nameNode, html: sanitizeHtml, emoji: emojiFragment,
-    contar: fmtCount, arroba: fullAcct,
-    editar: openEditProfile, listas: () => openListPicker(a), menu: () => accountMenu(a, p.rel),
-    abrirPerfil: openProfile, abrirTag: openTag, abrirGente: (tipo) => openPeople(p, tipo),
-  } });
-
-  ilha(view, BarraAbas, { itens: profileSegs(p).map(([id, rotulo]) => ({ id, rotulo })), valor: p.seg, aoMudar: (id) => setProfileSeg(p, id), sob: true, nome: 'Perfil' });
-  if (a.locked && !self && !(p.rel && p.rel.following)) {
-    view.append(h('p', { class: 'note muted small' }, 'Perfil fechado: siga a conta para ver as publicações.'));
-  }
-  const pinnedIds = new Set(p.pinned.map((s) => s.id));
-  if (p.seg === 'posts') {
-    p.pinned.forEach((s) => view.append(h('div', { class: 'pinned' },
-      h('div', { class: 'pinned-note muted small' }, svgIcon('pin', 14), ' Fixada'), statusEl(s))));
-  }
-  timelineView(view, 'p:' + p.seg, { ocultar: (s) => p.seg === 'posts' && pinnedIds.has(s.id) });
-}
-
-
 /* ----- Explorar ----- */
 
 const SEGMENTS = [
@@ -2122,21 +2027,6 @@ function getList(kind) {
   return state[kind];
 }
 
-function trendsView(view) {
-  const t = state.trends;
-  reativas.set('trends', t);
-  ilha(view, EmAlta, { t, c: ctxLista(), aoTentar: loadTrends,
-    aoDispensar: async (n) => {
-      try { await api(`/api/v1/announcements/${n.id}/dismiss`, { method: 'POST' }); t.notices = t.notices.filter((x) => x.id !== n.id); } catch (e) { toast(e.message); }
-    } });
-}
-
-function otherView(view) {
-  const ex = state.explore;
-  ilha(view, OutraInstancia, { host: ex.otherHost, salvas: store.get('otherHosts', []), aoIr: goOther });
-  if (ex.otherHost) timelineView(view, 'other', { readonly: true, host: ex.otherHost });
-}
-
 /* ----- Busca ----- */
 
 const SEARCH_TYPES = [['', 'Tudo'], ['accounts', 'Contas'], ['hashtags', 'Hashtags'], ['statuses', 'Publicações']];
@@ -2146,7 +2036,7 @@ async function runSearch(append = false) {
   if (!s.q || s.loading) return;
   s.loading = true; s.error = null;
   if (!append) busy(+1);
-  if (reativas.get('search') !== s) render();
+  render();
   try {
     const params = { q: s.q, resolve: 'true', limit: s.type ? 20 : 5 };
     if (s.type) params.type = s.type;
@@ -2164,7 +2054,7 @@ async function runSearch(append = false) {
   } finally {
     s.loading = false;
     if (!append) busy(-1);
-    if (session && reativas.get('search') !== s) render();
+    if (session) render();
   }
 }
 
@@ -2213,31 +2103,6 @@ function bindDock() {
   if (window.visualViewport) { window.visualViewport.addEventListener('resize', fitDock); window.visualViewport.addEventListener('scroll', fitDock); }
 }
 
-function searchView(view) {
-  const s = state.search;
-  ilha(view, BuscaTipos, { tipos: SEARCH_TYPES, atual: s.type, aoEscolher: (id) => { s.type = id; s.res = null; if (s.q) runSearch(); else render(); } });
-  reativas.set('search', s);
-  ilha(view, Resultados, { s, c: ctxLista(), aoMais: () => runSearch(true), aoTentar: () => runSearch() });
-}
-
-function exploreView(view) {
-  const ex = state.explore;
-  if (ex.tag) {
-    view.append(h('div', { class: 'tag-head' },
-      h('button', { type: 'button', class: 'ro-botao ro-botao--quieto ro-botao--icone icon-btn', 'aria-label': 'Voltar', onclick: closeTag }, svgIcon('back', 22)),
-      h('strong', {}, '#' + ex.tag),
-      ex.tagFollowing === null ? null : h('button', { type: 'button', class: 'chip ro-chip push-right', 'aria-pressed': ex.tagFollowing ? 'true' : 'false', onclick: () => toggleFollowTag(ex.tag) }, ex.tagFollowing ? 'Seguindo' : 'Seguir')));
-    timelineView(view, 'tag');
-    return;
-  }
-  if (state.search.active) { searchView(view); return; }
-  ilha(view, BarraAbas, { itens: SEGMENTS.map(([id, rotulo]) => ({ id, rotulo })), valor: ex.seg, aoMudar: setSeg, nome: 'Explorar' });
-  if (ex.seg === 'trends') trendsView(view);
-  else if (ex.seg === 'tags') tagsView(view);
-  else if (ex.seg === 'other') otherView(view);
-  else timelineView(view, ex.seg);
-}
-
 function setSeg(id) {
   state.explore.seg = id;
   store.set('seg', id);
@@ -2279,16 +2144,6 @@ async function loadFollowedTags() {
   try { f.items = await api('/api/v1/followed_tags', { params: { limit: 100 } }); f.loaded = true; } catch (e) { f.error = e.message; } finally { f.loading = false; busy(-1); if (session) render(); }
 }
 
-function tagsView(view) {
-  const f = state.followedTags;
-  ilha(view, HashtagsSeguidas, {
-    f, aoTentar: loadFollowedTags, aoAbrir: openTag,
-    aoDeixar: async (name) => {
-      try { await api(`/api/v1/tags/${encodeURIComponent(name)}/unfollow`, { method: 'POST' }); f.items = f.items.filter((x) => x.name !== name); render(); } catch (e) { toast(e.message); }
-    },
-  });
-}
-
 function closeTag() {
   state.explore.tag = null;
   state.tag = mkList();
@@ -2325,24 +2180,100 @@ function ensureExploreLoaded() {
 
 /* ----- Render e carregamento ----- */
 
-function render() {
+
+/* ----- Casca ----- */
+
+let casca = null;
+
+// O que a casca (Svelte) pede ao app: carregamentos, ações e os nós ainda feitos em JS.
+function cascaCtx() {
+  publicacaoCtx ||= mkPublicacaoCtx();
+  const lista = ctxLista();
+  const desmontar = () => { if (casca) { unmount(casca); casca = null; } };
+  return {
+    pub: publicacaoCtx, lista, desmontar,
+    carregar: (tipo, mais) => loadList(tipo, mais),
+    carregarConversa: (t) => loadThread(t),
+    alarme: () => alarm.text,
+    instanciasSalvas: () => store.get('otherHosts', []),
+    entrada: (el, e) => entryView(el, e),
+    pularEntrada,
+    fecharPerfil: closeProfile,
+    fecharGente: closePeople,
+    fecharConfiguracoes: () => { state.settingsOpen = false; window.scrollTo(0, 0); },
+    abrirConfiguracoes: () => { state.settingsOpen = true; window.scrollTo(0, 0); loadPush(); },
+    contas: accountsSheet,
+    contaId: session && session.account.id,
+    nomeNo: nameNode,
+    segsPerfil: profileSegs,
+    mudarSegPerfil: setProfileSeg,
+    perfil: (p) => ({
+      p, self: p.account.id === session.account.id, seguirNo: () => followBtn(p), url: safeUrl, nomeNo: nameNode, html: sanitizeHtml, emoji: emojiFragment,
+      contar: fmtCount, arroba: fullAcct,
+      editar: openEditProfile, listas: () => openListPicker(p.account), menu: () => accountMenu(p.account, p.rel),
+      abrirPerfil: openProfile, abrirTag: openTag, abrirGente: (tipo) => openPeople(p, tipo),
+    }),
+    configuracoes: () => {
+      const abrir = {
+        filtros: openFilters, agendadas: openScheduled, saude: openHealth,
+        silenciadas: () => openAccountsEntry('Contas silenciadas', '/api/v1/mutes', 'unmute', 'Reativar'),
+        bloqueadas: () => openAccountsEntry('Contas bloqueadas', '/api/v1/blocks', 'unblock', 'Desbloquear'),
+      };
+      return {
+        sessoes: sessions(), ehAtiva: (s) => session && sameAcc(s, session), trocarConta: activate,
+        prefs: { ...prefs }, push: { ...pushState }, alertasPush: PUSH_ALERTS, appNome: APP_NAME, appUrl: APP_URL, host: session.host,
+        nomeNo: nameNode, url: safeUrl,
+        definirPref: setPref, setPushAlert, ativarPush: enablePush, desativarPush: disablePush,
+        adicionarConta: addAccount, atualizarApp: updateApp, sair: () => logout(),
+        copiar: async (t) => { try { await navigator.clipboard.writeText(t); toast('Endereço copiado'); } catch { toast('Não consegui copiar'); } },
+        abrir: (nome) => abrir[nome](),
+      };
+    },
+    verStatus: openHealth,
+    mudarLista: setHomeList,
+    gerenciarListas: openListsManage,
+    abasAvisos: NOTIF_TABS,
+    mudarAbaAvisos: setNotifTab,
+    segmentos: SEGMENTS,
+    mudarSegmento: setSeg,
+    fecharTag: closeTag,
+    seguirTag: toggleFollowTag,
+    tiposBusca: SEARCH_TYPES,
+    escolherTipoBusca: (id) => { const s = state.search; s.type = id; s.res = null; if (s.q) runSearch(); },
+    buscar: (mais) => runSearch(mais),
+    carregarEmAlta: loadTrends,
+    dispensarAviso: async (n) => {
+      const t = state.trends;
+      try { await api(`/api/v1/announcements/${n.id}/dismiss`, { method: 'POST' }); t.notices = t.notices.filter((x) => x.id !== n.id); } catch (e) { toast(e.message); }
+    },
+    carregarHashtags: loadFollowedTags,
+    abrirTag: openTag,
+    deixarTag: async (name) => {
+      const f = state.followedTags;
+      try { await api(`/api/v1/tags/${encodeURIComponent(name)}/unfollow`, { method: 'POST' }); f.items = f.items.filter((x) => x.name !== name); } catch (e) { toast(e.message); }
+    },
+    irOutra: goOther,
+  };
+}
+
+function montarCasca() {
+  if (casca) unmount(casca);
   const view = $('#view');
-  const y = window.scrollY;
-  const top0 = topEntry();
-  // não reconstrói o formulário de edição enquanto a pessoa digita (perderia o foco e o teclado)
-  if (top0 && (top0.type === 'editprofile' || top0.type === 'filteredit') && top0.built && view.contains(document.activeElement) && document.activeElement.matches('input, textarea')) return;
-  desmontarIlhas();
   view.replaceChildren();
-  const top = topEntry();
-  const prof = activeProfile();
-  if (top && top.type) entryView(view, top);
-  else if (prof) profileView(view, prof);
-  else if (state.tab === 'home') homeView(view);
-  else if (state.tab === 'notifications') notificationsView(view);
-  else if (state.tab === 'explore') exploreView(view);
-  window.scrollTo(0, y);
+  casca = mount(Casca, { target: view, props: { c: cascaCtx() } });
+  flushSync();
+}
+
+// Telas em Svelte reagem sozinhas ao estado; render() só refaz o trecho legado (telas empilhadas ainda em JS).
+function render() {
+  flushSync(() => { gatilho.v++; });
   updateDock();
   updatePill();
+}
+
+// Não refaz o formulário de edição enquanto a pessoa digita (perderia o foco e o teclado)
+function pularEntrada(e) {
+  return (e.type === 'editprofile' || e.type === 'filteredit') && e.built && $('#view').contains(document.activeElement) && document.activeElement.matches('input, textarea');
 }
 
 function listSpec(kind) {
@@ -2381,7 +2312,7 @@ async function loadList(kind, append = false) {
   st.loading = true;
   st.error = null;
   if (!append) busy(+1);
-  if (reativas.get(kind) !== st) render();
+  render();
   try {
     const params = { limit: 30, ...spec.extra };
     if (append) {
@@ -2408,7 +2339,7 @@ async function loadList(kind, append = false) {
   } finally {
     st.loading = false;
     if (!append) busy(-1);
-    if (session && reativas.get(kind) !== getList(kind)) render();
+    if (session) render();
     if (session && kind === 'home' && !append && !st.error) setTimeout(checkHomeMarker, 300);
   }
 }
@@ -2419,7 +2350,7 @@ async function loadTrends() {
   t.loading = true;
   t.error = null;
   busy(+1);
-  if (reativas.get('trends') !== t) render();
+  render();
   try {
     const [tags, statuses, links, people, notices] = await Promise.all([
       api('/api/v1/trends/tags', { params: { limit: 20 } }),
@@ -2439,7 +2370,7 @@ async function loadTrends() {
   } finally {
     t.loading = false;
     busy(-1);
-    if (session && reativas.get('trends') !== t) render();
+    if (session) render();
   }
 }
 
@@ -3005,6 +2936,7 @@ async function updateApp() {
 async function startApp() {
   appStarted = true;
   showApp();
+  montarCasca();
   // aberto pelo toque numa notificação push
   const go = new URL(location.href).searchParams.get('go');
   if (go) history.replaceState(null, '', location.pathname);
