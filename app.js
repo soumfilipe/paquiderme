@@ -6,7 +6,7 @@ import 'rochedo';
 import './style.css';
 import { estado, reiniciar } from './src/estado.svelte.js';
 import { registrar, canon, atualizar, esquecer, limpar as limparPublicacoes } from './src/publicacoes.svelte.js';
-import { gatilho } from './src/casca.svelte.js';
+import { ambiente } from './src/ambiente.svelte.js';
 import Casca from './src/telas/Casca.svelte';
 import Estado from './src/telas/Estado.svelte';
 import Publicacao from './src/telas/Publicacao.svelte';
@@ -401,7 +401,6 @@ function purgeAccount(id) {
   ['home', 'local', 'global', 'tag', 'listTl'].forEach((k) => { state[k].items = state[k].items.filter(keep); });
   state.trends.statuses = state.trends.statuses.filter(keep);
   state.notifications.items = state.notifications.items.filter((n) => n.account.id !== id);
-  redesenhar();
 }
 
 function applyRel(account, rel) {
@@ -426,7 +425,7 @@ async function accountAction(account, verb, msg) {
   try {
     const rel = await api(`/api/v1/accounts/${account.id}/${verb}`, { method: 'POST' });
     applyRel(account, rel);
-    if (verb === 'block' || verb === 'mute') purgeAccount(account.id); else redesenhar();
+    if (verb === 'block' || verb === 'mute') purgeAccount(account.id);
     toast(msg);
   } catch (e) { toast(e.message); }
 }
@@ -454,7 +453,6 @@ async function followOptions(account, patch, msg) {
   try {
     const rel = await api(`/api/v1/accounts/${account.id}/follow`, { method: 'POST', body: patch });
     applyRel(account, rel);
-    redesenhar();
     toast(msg);
   } catch (e) { toast(e.message); }
 }
@@ -645,14 +643,13 @@ const NOTIF_TABS = [['all', 'Todos'], ['mentions', 'Menções'], ['dms', 'Mensag
 function setNotifTab(id) {
   state.notifTab = id;
   window.scrollTo(0, 0);
-  redesenhar();
   const k = id === 'mentions' ? 'mentions' : id === 'dms' ? 'convs' : 'notifications';
   if (!state[k].items.length && !state[k].loading) loadList(k);
 }
 
 const plainText = (html) => { const d = new DOMParser().parseFromString(html || '', 'text/html').body; d.querySelectorAll('br').forEach((b) => b.replaceWith(' ')); return (d.textContent || '').replace(/\s+/g, ' ').trim(); };
 
-// Lista de publicações em Svelte: reage sozinha a carregamentos e novas publicações (sem redesenhar() global).
+// Lista de publicações em Svelte: reage sozinha a carregamentos e novas publicações.
 // Tudo o que as telas de lista precisam do app (publicação + contas, hashtags e abertura de telas)
 function ctxLista() {
   publicacaoCtx ||= mkPublicacaoCtx();
@@ -667,7 +664,6 @@ function openThread(status, host = null) {
     loading: false, loaded: false, error: null, returnScroll: window.scrollY,
   });
   window.scrollTo(0, 0);
-  redesenhar();
   loadThread(topEntry());
 }
 
@@ -676,7 +672,6 @@ async function loadThread(t) {
   t.loading = true;
   t.error = null;
   busy(+1);
-  redesenhar();
   try {
     const opts = { host: t.host, auth: !t.host };
     const [ctx, fresh] = await Promise.all([
@@ -693,7 +688,6 @@ async function loadThread(t) {
     t.loading = false;
     busy(-1);
     if (session && aberta(t)) {
-      redesenhar();
       if (t.loaded && !t.scrolled) {
         t.scrolled = true;
         // depois de a tela reagir aos dados novos
@@ -821,7 +815,6 @@ async function refreshWithCache(kind) {
   const y0 = window.scrollY;
   const h0 = document.documentElement.scrollHeight;
   st.loading = true; st.error = null;
-  redesenhar();
   try {
     const data = await api(spec.path, { params: { limit: 30 } });
     const have = new Set(st.items.map((s) => s.id));
@@ -842,7 +835,6 @@ async function refreshWithCache(kind) {
     st.loading = false;
     if (session && kind === 'home') setTimeout(checkHomeMarker, 300);
     if (session) {
-      redesenhar();
       if (st.cleanSlate) { st.cleanSlate = false; window.scrollTo(0, 0); }
       else window.scrollTo(0, y0 + (document.documentElement.scrollHeight - h0)); // mantém o ponto de leitura
     }
@@ -1077,7 +1069,9 @@ function markNotificationsRead() {
 /* ---------- Preferências ---------- */
 
 const PREF_DEFAULTS = { live: true, theme: 'auto', textSize: 100, motion: 'auto', showSensitive: false, openCw: false, defaultVis: '' };
-let prefs = { ...PREF_DEFAULTS, ...store.get('prefs', {}) };
+ambiente.outras = store.get('otherHosts', []);
+ambiente.prefs = { ...PREF_DEFAULTS, ...store.get('prefs', {}) };
+const prefs = ambiente.prefs;
 
 function applyPrefs() {
   const root = document.documentElement;
@@ -1095,7 +1089,6 @@ function setPref(key, value) {
   store.set('prefs', prefs);
   applyPrefs();
   if (key === 'live') { if (value) liveConnect(); else liveClose(); }
-  redesenhar();
 }
 
 /* ---------- Tempo real (streaming) ---------- */
@@ -1182,7 +1175,8 @@ async function liveCatchUp() {
 function updatePill() {
   const pill = $('#new-pill');
   if (!pill) return;
-  state.newPosts = state.newPosts.filter((p) => !state.home.items.some((x) => x.id === p.id));
+  const novas = state.newPosts.filter((p) => !state.home.items.some((x) => x.id === p.id));
+  if (novas.length !== state.newPosts.length) state.newPosts = novas;
   const n = state.newPosts.length;
   const show = n > 0 && !!session && state.tab === 'home' && !state.homeList && state.profiles.length === 0 && !$('#app').hidden;
   pill.hidden = !show;
@@ -1193,7 +1187,6 @@ function showNewPosts() {
   state.home.items = state.newPosts.concat(state.home.items);
   state.newPosts = [];
   window.scrollTo(0, 0);
-  redesenhar();
 }
 
 /* ---------- Avisos no aparelho (Web Push) ---------- */
@@ -1205,7 +1198,7 @@ const PUSH_ALERTS = [
   ['favourite', 'Favoritos'],
   ['status', 'Publicações de contas com o sininho'],
 ];
-const pushState = { loading: false, supported: false, standalone: false, sub: null, error: null, loaded: false };
+const pushState = ambiente.push;
 
 const isStandalone = () => navigator.standalone === true || (window.matchMedia && matchMedia('(display-mode: standalone)').matches);
 const pushSupported = () => 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
@@ -1229,7 +1222,6 @@ async function loadPush() {
     if (e.status !== 404) ps.error = e.message;
   } finally {
     ps.loading = false; ps.loaded = true;
-    if (session) redesenhar();
   }
 }
 
@@ -1251,7 +1243,6 @@ async function enablePush() {
     } });
     toast('Avisos ativados');
   } catch (e) { ps.error = e.message; }
-  if (session) redesenhar();
 }
 
 async function disablePush() {
@@ -1264,7 +1255,6 @@ async function disablePush() {
     ps.sub = null;
     toast('Avisos desativados');
   } catch (e) { ps.error = e.message; }
-  if (session) redesenhar();
 }
 
 async function setPushAlert(key, on) {
@@ -1274,7 +1264,6 @@ async function setPushAlert(key, on) {
   try {
     ps.sub = await api('/api/v1/push/subscription', { method: 'PUT', body: { data: { alerts } } });
   } catch (e) { toast(e.message); }
-  redesenhar();
 }
 
 /* ----- Listas ----- */
@@ -1294,12 +1283,11 @@ async function loadLists(quiet = false) {
   } finally {
     L.loading = false;
     if (!quiet) busy(-1);
-    if (session) redesenhar();
   }
 }
 
 /* ----- Aviso rápido de problema no topo do Início ----- */
-const alarm = { text: '', level: '', timer: null };
+const alarm = { timer: null };
 async function quickHealth() {
   if (!session) return;
   let text = '';
@@ -1316,7 +1304,7 @@ async function quickHealth() {
       }
     } catch { text = `Não foi possível falar com ${session.host}.`; }
   }
-  if (text !== alarm.text) { alarm.text = text; if (session && state.tab === 'home' && !state.profiles.length) redesenhar(); }
+  if (text !== ambiente.alarme) ambiente.alarme = text;
 }
 function scheduleQuickHealth(ms = 1500) { clearTimeout(alarm.timer); alarm.timer = setTimeout(quickHealth, ms); }
 
@@ -1324,7 +1312,6 @@ function setHomeList(id) {
   state.homeList = id || null;
   state.listTl = mkList();
   window.scrollTo(0, 0);
-  redesenhar();
   if (id) loadList('list');
   else if (!state.home.items.length) loadList('home');
 }
@@ -1338,7 +1325,6 @@ function pushEntry(entry) {
   state.profiles.push(entry);
   window.scrollTo(0, 0);
   const viva = topEntry(); // o proxy do estado: de agora em diante mude ESTE objeto, não o original
-  redesenhar();
   // adiado: quem chamou ainda vai trocar sua variável pelo proxy devolvido, e o reload deve mexer nele
   if (viva.reload) queueMicrotask(() => viva.reload());
   return viva;
@@ -1365,7 +1351,6 @@ async function createList(title) {
   try {
     const l = await api('/api/v1/lists', { method: 'POST', body: { title } });
     state.lists.items.push(l);
-    redesenhar();
   } catch (e) { toast(e.message); }
 }
 
@@ -1378,13 +1363,12 @@ function listsManageTela(e) {
     L: state.lists, e, aoCriar: createList, aoRecarregar: () => loadLists(),
     aoAbrir: (l) => { state.profiles = []; setHomeList(l.id); },
     aoMembros: openMembers,
-    aoEditar: (id) => { e.editing = id; redesenhar(); },
+    aoEditar: (id) => { e.editing = id; },
     aoRenomear: async (l, title) => {
       try {
         const u = await api(`/api/v1/lists/${l.id}`, { method: 'PUT', body: { title } });
         l.title = u.title;
         e.editing = null;
-        redesenhar();
       } catch (err) { toast(err.message); }
     },
     aoExcluir: async (l) => {
@@ -1392,7 +1376,6 @@ function listsManageTela(e) {
         await api(`/api/v1/lists/${l.id}`, { method: 'DELETE' });
         state.lists.items = state.lists.items.filter((x) => x.id !== l.id);
         if (state.homeList === l.id) { state.homeList = null; state.listTl = mkList(); }
-        redesenhar();
       } catch (err) { toast(err.message); }
     },
   } };
@@ -1408,7 +1391,6 @@ async function loadAccountsEntry(e, append) {
   if (e.loading) return;
   e.loading = true; e.error = null;
   if (!append) busy(+1);
-  redesenhar();
   try {
     let headers = null;
     const params = { limit: 40 };
@@ -1421,7 +1403,6 @@ async function loadAccountsEntry(e, append) {
   } catch (err) { e.error = err.message; } finally {
     e.loading = false;
     if (!append) busy(-1);
-    if (session && aberta(e)) redesenhar();
   }
 }
 
@@ -1437,7 +1418,6 @@ function accountsEntryTela(e) {
       try {
         await api(`/api/v1/accounts/${a.id}/${e.undoVerb}`, { method: 'POST' });
         e.items = e.items.filter((x) => x.id !== a.id);
-        redesenhar();
       } catch (err) { toast(err.message); btn.disabled = false; }
     },
   } };
@@ -1454,7 +1434,6 @@ async function loadMembers(e) {
   e.loading = true;
   e.error = null;
   busy(+1);
-  redesenhar();
   try {
     e.items = await api(`/api/v1/lists/${e.list.id}/accounts`, { params: { limit: 0 } });
     e.loaded = true;
@@ -1463,7 +1442,6 @@ async function loadMembers(e) {
   } finally {
     e.loading = false;
     busy(-1);
-    if (session && aberta(e)) redesenhar();
   }
 }
 
@@ -1472,18 +1450,16 @@ function membersTela(e) {
     e, c: contaCtx(), aoRecarregar: () => loadMembers(e),
     aoBuscar: async (q) => {
       e.q = q;
-      if (!q) { e.results = null; redesenhar(); return; }
+      if (!q) { e.results = null; return; }
       try {
         e.results = await api('/api/v1/accounts/search', { params: { q, following: 'true', limit: 10 } });
       } catch (err) { toast(err.message); return; }
-      redesenhar();
     },
     aoAdicionar: async (a, btn) => {
       btn.disabled = true;
       try {
         await api(`/api/v1/lists/${e.list.id}/accounts`, { method: 'POST', body: { account_ids: [a.id] } });
         e.items.push(a);
-        redesenhar();
       } catch (err) { toast(err.message); btn.disabled = false; }
     },
     aoRemover: async (a, btn) => {
@@ -1491,7 +1467,6 @@ function membersTela(e) {
       try {
         await api(`/api/v1/lists/${e.list.id}/accounts`, { method: 'DELETE', body: { account_ids: [a.id] } });
         e.items = e.items.filter((x) => x.id !== a.id);
-        redesenhar();
       } catch (err) { toast(err.message); btn.disabled = false; }
     },
   } };
@@ -1502,7 +1477,7 @@ function openListPicker(account) {
   let e = { type: 'pick', account, member: new Set(), loaded: false, loading: false, error: null };
   e.reload = async () => {
     if (e.loading) return;
-    e.loading = true; e.error = null; busy(+1); redesenhar();
+    e.loading = true; e.error = null; busy(+1);
     try {
       const [mine] = await Promise.all([
         api(`/api/v1/accounts/${account.id}/lists`),
@@ -1512,7 +1487,6 @@ function openListPicker(account) {
       e.loaded = true;
     } catch (err) { e.error = err.message; } finally {
       e.loading = false; busy(-1);
-      if (session && aberta(e)) redesenhar();
     }
   };
   e = pushEntry(e);
@@ -1528,7 +1502,6 @@ function listPickTela(e) {
         e.member = new Set(e.member); // o Set dentro do estado não é reativo: troca por um novo
         if (nela) e.member.delete(l.id); else e.member.add(l.id);
         btn.disabled = false;
-        redesenhar();
       } catch (err) { toast(err.message); btn.disabled = false; }
     },
   } };
@@ -1548,13 +1521,12 @@ function openFilters() {
 }
 
 async function loadFilters(e) {
-  e.loading = true; e.error = null; busy(+1); redesenhar();
+  e.loading = true; e.error = null; busy(+1);
   try {
     e.items = await api('/api/v2/filters');
     e.loaded = true;
   } catch (err) { e.error = err.message; } finally {
     e.loading = false; busy(-1);
-    if (session && aberta(e)) redesenhar();
   }
 }
 
@@ -1566,7 +1538,7 @@ function filtersTela(e) {
     aoExcluir: async (f) => {
       try {
         await api(`/api/v2/filters/${f.id}`, { method: 'DELETE' });
-        e.items = e.items.filter((x) => x.id !== f.id); redesenhar();
+        e.items = e.items.filter((x) => x.id !== f.id);
       } catch (err) { toast(err.message); }
     },
   } };
@@ -1589,7 +1561,7 @@ function openHealth() {
 
 async function runHealth(e) {
   if (e.running) return;
-  e.running = true; e.checks = null; redesenhar();
+  e.running = true; e.checks = null;
   const host = session.host;
   const [inst, cred, tl] = await Promise.all([
     timed(async () => { const r = await fetch(`https://${host}/api/v2/instance`, { cache: 'no-store' }); if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); }),
@@ -1617,7 +1589,6 @@ async function runHealth(e) {
   e.checks = checks;
   e.at = new Date();
   e.running = false;
-  if (session && aberta(e)) redesenhar();
 }
 
 function healthTela(e) {
@@ -1632,13 +1603,12 @@ function openScheduled() {
 }
 
 async function loadScheduled(e) {
-  e.error = null; busy(+1); redesenhar();
+  e.error = null; busy(+1);
   try {
     e.items = await api('/api/v1/scheduled_statuses');
     e.loaded = true;
   } catch (err) { e.error = err.message; } finally {
     busy(-1);
-    if (session && aberta(e)) redesenhar();
   }
 }
 
@@ -1648,7 +1618,7 @@ function scheduledTela(e) {
     aoCancelar: async (it) => {
       try {
         await api(`/api/v1/scheduled_statuses/${it.id}`, { method: 'DELETE' });
-        e.items = e.items.filter((x) => x.id !== it.id); redesenhar();
+        e.items = e.items.filter((x) => x.id !== it.id);
       } catch (err) { toast(err.message); }
     },
   } };
@@ -1718,7 +1688,7 @@ function openEditProfile() {
 }
 
 async function loadEditProfile(e) {
-  e.loading = true; e.error = null; busy(+1); redesenhar();
+  e.loading = true; e.error = null; busy(+1);
   try {
     const [acct, inst] = await Promise.all([
       api('/api/v1/accounts/verify_credentials'),
@@ -1745,7 +1715,6 @@ async function loadEditProfile(e) {
   } finally {
     e.loading = false; busy(-1);
     e.built = false;
-    if (session && aberta(e)) redesenhar();
   }
 }
 
@@ -1835,7 +1804,6 @@ function openProfile(account) {
   p.uid = crypto.randomUUID();
   state.profiles.push(p);
   window.scrollTo(0, 0);
-  redesenhar();
   const viva = topEntry();
   loadProfile(viva);
   ensureProfileLoaded(viva);
@@ -1869,7 +1837,6 @@ async function openProfileByAcct(acct) {
 
 function closeProfile() {
   const p = state.profiles.pop();
-  redesenhar();
   window.scrollTo(0, (p && p.returnScroll) || 0);
 }
 
@@ -1894,7 +1861,6 @@ async function loadProfile(p) {
     p.error = e.message;
   } finally {
     busy(-1);
-    if (session) redesenhar();
   }
 }
 
@@ -1909,7 +1875,6 @@ function setProfileSeg(p, id) {
   p.seg = id;
   p.people = null;
   window.scrollTo(0, 0);
-  redesenhar();
   ensureProfileLoaded(p);
 }
 
@@ -1917,13 +1882,11 @@ function openPeople(p, kind) {
   p.people = kind;
   p.peopleScroll = window.scrollY;
   window.scrollTo(0, 0);
-  redesenhar();
   ensureProfileLoaded(p);
 }
 
 function closePeople(p) {
   p.people = null;
-  redesenhar();
   window.scrollTo(0, p.peopleScroll || 0);
 }
 
@@ -1941,7 +1904,6 @@ function followBtn(p) {
       const verb = st === 'following' || st === 'requested' ? 'unfollow' : 'follow';
       try {
         p.rel = await api(`/api/v1/accounts/${p.id}/${verb}`, { method: 'POST' });
-        redesenhar();
       } catch (err) {
         toast(err.message);
         btn.disabled = false;
@@ -2003,7 +1965,6 @@ async function runSearch(append = false) {
   if (!s.q || s.loading) return;
   s.loading = true; s.error = null;
   if (!append) busy(+1);
-  redesenhar();
   try {
     const params = { q: s.q, resolve: 'true', limit: s.type ? 20 : 5 };
     if (s.type) params.type = s.type;
@@ -2021,7 +1982,6 @@ async function runSearch(append = false) {
   } finally {
     s.loading = false;
     if (!append) busy(-1);
-    if (session) redesenhar();
   }
 }
 
@@ -2031,7 +1991,7 @@ function startSearch(q) {
   s.res = null;
   s.active = !!s.q;
   window.scrollTo(0, 0);
-  if (s.q) runSearch(); else { redesenhar(); ensureExploreLoaded(); }
+  if (s.q) runSearch(); else { ensureExploreLoaded(); }
   updateDock();
 }
 
@@ -2039,8 +1999,7 @@ function closeSearch() {
   const s = state.search;
   s.q = ''; s.res = null; s.active = false; s.error = null;
   $('#search-input').value = '';
-  window.scrollTo(0, 0);
-  redesenhar(); ensureExploreLoaded(); updateDock();
+  window.scrollTo(0, 0); ensureExploreLoaded(); updateDock();
 }
 
 // Barra de busca fixa na base do Explorar (ao alcance do polegar)
@@ -2074,7 +2033,6 @@ function setSeg(id) {
   state.explore.seg = id;
   store.set('seg', id);
   window.scrollTo(0, 0);
-  redesenhar();
   ensureExploreLoaded();
 }
 
@@ -2089,33 +2047,32 @@ function openTag(name) {
 async function loadTagInfo(name) {
   try {
     const t = await api(`/api/v1/tags/${encodeURIComponent(name)}`);
-    if (state.explore.tag === name) { state.explore.tagFollowing = !!t.following; redesenhar(); }
+    if (state.explore.tag === name) { state.explore.tagFollowing = !!t.following; }
   } catch { /* instância sem o recurso: some o botão */ }
 }
 
 async function toggleFollowTag(name) {
   const ex = state.explore;
   const was = ex.tagFollowing;
-  ex.tagFollowing = !was; redesenhar();
+  ex.tagFollowing = !was;
   try {
     await api(`/api/v1/tags/${encodeURIComponent(name)}/${was ? 'unfollow' : 'follow'}`, { method: 'POST' });
     state.followedTags.loaded = false;
     toast(was ? `Deixou de seguir #${name}` : `Seguindo #${name}`);
-  } catch (e) { ex.tagFollowing = was; redesenhar(); toast(e.message); }
+  } catch (e) { ex.tagFollowing = was; toast(e.message); }
 }
 
 async function loadFollowedTags() {
   const f = state.followedTags;
   if (f.loading) return;
-  f.loading = true; f.error = null; busy(+1); redesenhar();
-  try { f.items = await api('/api/v1/followed_tags', { params: { limit: 100 } }); f.loaded = true; } catch (e) { f.error = e.message; } finally { f.loading = false; busy(-1); if (session) redesenhar(); }
+  f.loading = true; f.error = null; busy(+1);
+  try { f.items = await api('/api/v1/followed_tags', { params: { limit: 100 } }); f.loaded = true; } catch (e) { f.error = e.message; } finally { f.loading = false; busy(-1); }
 }
 
 function closeTag() {
   state.explore.tag = null;
   state.tag = mkList();
   window.scrollTo(0, 0);
-  redesenhar();
   ensureExploreLoaded();
 }
 
@@ -2124,7 +2081,8 @@ function goOther(raw) {
   if (!host) { toast('Endereço de instância inválido.'); return; }
   state.explore.otherHost = host;
   store.set('otherHost', host);
-  store.set('otherHosts', [host, ...store.get('otherHosts', []).filter((x) => x !== host)].slice(0, 8));
+  ambiente.outras = [host, ...ambiente.outras.filter((x) => x !== host)].slice(0, 8);
+  store.set('otherHosts', ambiente.outras);
   state.other = mkList();
   loadList('other');
 }
@@ -2161,9 +2119,7 @@ function cascaCtx() {
     pub: publicacaoCtx, lista, desmontar,
     carregar: (tipo, mais) => loadList(tipo, mais),
     carregarConversa: (t) => loadThread(t),
-    alarme: () => alarm.text,
-    instanciasSalvas: () => store.get('otherHosts', []),
-    entrada: entradaTela,
+        entrada: entradaTela,
     fecharPerfil: closeProfile,
     fecharGente: closePeople,
     fecharConfiguracoes: () => { state.settingsOpen = false; window.scrollTo(0, 0); },
@@ -2187,7 +2143,7 @@ function cascaCtx() {
       };
       return {
         sessoes: sessions(), ehAtiva: (s) => session && sameAcc(s, session), trocarConta: activate,
-        prefs: { ...prefs }, push: { ...pushState }, alertasPush: PUSH_ALERTS, appNome: APP_NAME, appUrl: APP_URL, host: session.host,
+        prefs, push: pushState, alertasPush: PUSH_ALERTS, appNome: APP_NAME, appUrl: APP_URL, host: session.host,
         nomeNo: nameNode, url: safeUrl,
         definirPref: setPref, setPushAlert, ativarPush: enablePush, desativarPush: disablePush,
         adicionarConta: addAccount, atualizarApp: updateApp, sair: () => logout(),
@@ -2195,6 +2151,7 @@ function cascaCtx() {
         abrir: (nome) => abrir[nome](),
       };
     },
+    sincronizar: () => { updateDock(); updatePill(); },
     verStatus: openHealth,
     mudarLista: setHomeList,
     gerenciarListas: openListsManage,
@@ -2228,14 +2185,6 @@ function montarCasca() {
   view.replaceChildren();
   casca = mount(Casca, { target: view, props: { c: cascaCtx() } });
   flushSync();
-}
-
-// Telas em Svelte reagem sozinhas ao estado. redesenhar() avisa o que não é reativo (alarme, avisos push, contas salvas)
-// e reposiciona a barra de busca e a pílula de novas publicações.
-function redesenhar() {
-  flushSync(() => { gatilho.v++; });
-  updateDock();
-  updatePill();
 }
 
 function listSpec(kind) {
@@ -2274,7 +2223,6 @@ async function loadList(kind, append = false) {
   st.loading = true;
   st.error = null;
   if (!append) busy(+1);
-  redesenhar();
   try {
     const params = { limit: 30, ...spec.extra };
     if (append) {
@@ -2301,7 +2249,6 @@ async function loadList(kind, append = false) {
   } finally {
     st.loading = false;
     if (!append) busy(-1);
-    if (session) redesenhar();
     if (session && kind === 'home' && !append && !st.error) setTimeout(checkHomeMarker, 300);
   }
 }
@@ -2312,7 +2259,6 @@ async function loadTrends() {
   t.loading = true;
   t.error = null;
   busy(+1);
-  redesenhar();
   try {
     const [tags, statuses, links, people, notices] = await Promise.all([
       api('/api/v1/trends/tags', { params: { limit: 20 } }),
@@ -2332,7 +2278,6 @@ async function loadTrends() {
   } finally {
     t.loading = false;
     busy(-1);
-    if (session) redesenhar();
   }
 }
 
@@ -2370,14 +2315,13 @@ function selectTab(tab) {
   window.scrollTo(0, 0);
   const icon = document.querySelector('#tabs [aria-current="page"] svg');
   if (icon) { icon.classList.remove('bump'); void icon.getBoundingClientRect(); icon.classList.add('bump'); }
-  redesenhar();
   if (tab === 'home') {
     if (!state.lists.loaded) loadLists(true);
     const k = state.homeList ? 'list' : 'home';
-    if (k === 'home' && hydrateFromCache('home')) { redesenhar(); window.scrollTo(0, store.get(scrollKey('home'), 0)); refreshWithCache('home'); }
+    if (k === 'home' && hydrateFromCache('home')) { window.scrollTo(0, store.get(scrollKey('home'), 0)); refreshWithCache('home'); }
     else if (!getList(k).items.length && !getList(k).loading) loadList(k);
   } else if (tab === 'notifications') {
-    if (hydrateFromCache('notifications')) { redesenhar(); window.scrollTo(0, store.get(scrollKey('notifications'), 0)); refreshWithCache('notifications'); }
+    if (hydrateFromCache('notifications')) { window.scrollTo(0, store.get(scrollKey('notifications'), 0)); refreshWithCache('notifications'); }
     else if (!state[tab].items.length && !state[tab].loading) loadList(tab);
   } else if (tab === 'explore') {
     ensureExploreLoaded();
@@ -2866,7 +2810,6 @@ function eachStatusList(fn) {
 function replaceStatus(u) {
   const t = activeThread();
   if (!(t && t.host)) atualizar(u); // thread de outra instância: os ids não são os nossos
-  redesenhar();
 }
 
 function removeStatus(id) {
@@ -2881,7 +2824,6 @@ function removeStatus(id) {
   });
   const t = activeThread();
   if (t && t.status.id === id) { closeProfile(); return; }
-  redesenhar();
 }
 
 /* ---------- App / PWA ---------- */
@@ -2916,7 +2858,6 @@ async function startApp() {
     if (cfg.statuses?.max_media_attachments) limits.maxMedia = cfg.statuses.max_media_attachments;
     if (cfg.polls) Object.assign(limits, { pollOptions: cfg.polls.max_options || 4, pollChars: cfg.polls.max_characters_per_option || 50, pollMin: cfg.polls.min_expiration || 300, pollMax: cfg.polls.max_expiration || 2629746 });
   } catch { /* mantém os padrões */ }
-  if (limits.translation && session) redesenhar();
   liveConnect();
 }
 
