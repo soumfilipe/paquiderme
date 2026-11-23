@@ -19,3 +19,11 @@ jobs:
       - run: npm run lint
       - run: npm run build
       - run: npm audit --audit-level=high
+      # testes de ponta a ponta: Playwright (Python) com o Chrome que já vem no runner e a API simulada
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install playwright
+      - run: python3 tests/e2e/rodar.py
+        env:
+          CHROME_PATH: /usr/bin/google-chrome
