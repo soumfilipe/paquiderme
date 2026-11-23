@@ -1,5 +1,4 @@
-// Estado reativo do compositor. O texto e o aviso de conteúdo continuam campos nativos (por causa do teclado do iOS);
-// anexos, enquete, ferramentas, contador e sugestões leem daqui e se atualizam sozinhos.
+// Estado reativo do compositor: texto, aviso de conteúdo, anexos, enquete, ferramentas, contador e sugestões.
 
 export const compose = $state({});
 
@@ -7,7 +6,7 @@ export const compose = $state({});
 export const limites = $state({ translation: false, maxChars: 500, maxMedia: 4, pollOptions: 4, pollChars: 50, pollMin: 300, pollMax: 2629746 });
 
 /** Estado de tela do compositor. */
-export const ui = $state({ vis: 'public', visMenu: false, cwOn: false, chars: 0, max: 2000, sugestoes: [] });
+export const ui = $state({ vis: 'public', visMenu: false, cwOn: false, chars: 0, max: 2000, sugestoes: [], texto: '', cw: '', nota: '', erro: '', bloqueado: false, publicando: false });
 
 /** Começa uma nova composição mantendo a mesma referência. */
 export function reiniciarCompose(novo) {

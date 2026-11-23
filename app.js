@@ -9,6 +9,8 @@ import { registrar, canon, atualizar, esquecer, limpar as limparPublicacoes } fr
 import { ambiente } from './src/ambiente.svelte.js';
 import Casca from './src/telas/Casca.svelte';
 import Estado from './src/telas/Estado.svelte';
+import Compositor from './src/telas/Compositor.svelte';
+import { ajustarJanela } from './src/composicaoGestos.js';
 import Publicacao from './src/telas/Publicacao.svelte';
 import { SvelteMap } from 'svelte/reactivity';
 import { compose as composeEstado, limites, ui as composeUi, reiniciarCompose } from './src/composicao.svelte.js';
@@ -2293,8 +2295,7 @@ const draftKey = () => `draft.${session.host}.${session.account.id}`;
 
 function saveDraft() {
   if (compose.replyTo || compose.edit) return;
-  const cw = $('#cw');
-  store.set(draftKey(), { text: $('#text').value, cw: cw.hidden ? '' : cw.value, poll: compose.poll, lang: compose.lang });
+  store.set(draftKey(), { text: composeUi.texto, cw: composeUi.cwOn ? composeUi.cw : '', poll: compose.poll, lang: compose.lang });
 }
 
 function openComposer({ replyTo = null, edit = null, share = '', quote = null } = {}) {
@@ -2305,53 +2306,49 @@ function openComposer({ replyTo = null, edit = null, share = '', quote = null } 
   compose.edit = edit;
   compose.quote = quote;
   compose.key = crypto.randomUUID();
-  $('#compose-error').textContent = '';
+  composeUi.erro = '';
   setCw(false);
   closeVisMenu();
-  const note = $('#reply-to');
-  $('#text').disabled = false;
+  composeUi.bloqueado = false;
   if (edit) {
-    $('#text').value = '';
-    $('#text').disabled = true;
+    composeUi.texto = '';
+    composeUi.bloqueado = true;
     compose.lang = edit.language || '';
     compose.sensitive = !!edit.sensitive;
     compose.media = (edit.media_attachments || []).map((m) => ({ id: m.id, preview: m.preview_url || m.url, description: m.description || '', uploading: false, type: m.type, existing: true }));
-    note.textContent = 'Editando publicação';
-    note.hidden = false;
+    composeUi.nota = 'Editando publicação';
     api(`/api/v1/statuses/${edit.id}/source`).then((src) => {
-      $('#text').value = src.text || '';
-      $('#text').disabled = false;
-      if (src.spoiler_text) { setCw(true); $('#cw').value = src.spoiler_text; }
-      updateCount();
+      composeUi.texto = src.text || '';
+      composeUi.bloqueado = false;
+      if (src.spoiler_text) { setCw(true); composeUi.cw = src.spoiler_text; }
+      flushSync();
       $('#text').focus();
-    }).catch((err) => { $('#compose-error').textContent = err.message; });
+    }).catch((err) => { composeUi.erro = err.message; });
   } else if (replyTo) {
     const me = session.account.acct;
     const who = [...new Set([replyTo.account.acct, ...(replyTo.mentions || []).map((m) => m.acct)])].filter((x) => x !== me);
-    $('#text').value = who.map((x) => `@${x}`).join(' ') + (who.length ? ' ' : '');
+    composeUi.texto = who.map((x) => `@${x}`).join(' ') + (who.length ? ' ' : '');
     setVisibility(replyTo.visibility);
-    note.textContent = `Respondendo a @${replyTo.account.acct}`;
-    note.hidden = false;
+    composeUi.nota = `Respondendo a @${replyTo.account.acct}`;
   } else if (quote) {
-    $('#text').value = '';
+    composeUi.texto = '';
     setVisibility(quote.visibility === 'public' ? (prefs.defaultVis || store.get('lastVisibility', 'public')) : quote.visibility);
-    note.textContent = `Citando @${quote.account.acct}: ${plainText(quote.content).slice(0, 80)}`;
-    note.hidden = false;
+    composeUi.nota = `Citando @${quote.account.acct}: ${plainText(quote.content).slice(0, 80)}`;
   } else {
     let d = store.get(draftKey(), '');
     if (typeof d === 'string') d = { text: d };
-    $('#text').value = (d && d.text) || '';
+    composeUi.texto = (d && d.text) || '';
     // um compartilhamento é uma publicação nova: não herda aviso de conteúdo nem enquete do rascunho antigo
-    if (d && d.cw && !share) { setCw(true); $('#cw').value = d.cw; }
+    if (d && d.cw && !share) { setCw(true); composeUi.cw = d.cw; }
     if (d && d.poll && !share && (d.poll.options || []).some((o) => (o || '').trim())) compose.poll = d.poll;
     if (d && d.lang != null) compose.lang = d.lang;
     setVisibility(prefs.defaultVis || store.get('lastVisibility', 'public'));
-    note.hidden = true;
-    if (share) { const cur = $('#text').value.trimEnd(); $('#text').value = cur ? `${cur}\n\n${share}` : share; saveDraft(); }
+    composeUi.nota = '';
+    if (share) { const cur = composeUi.texto.trimEnd(); composeUi.texto = cur ? `${cur}\n\n${share}` : share; saveDraft(); }
   }
-  updateCount();
+  flushSync();
   $('#composer').showModal();
-  fitComposer();
+  ajustarJanela();
   fitText();
   const t = $('#text');
   if (!edit) { t.focus(); t.setSelectionRange(t.value.length, t.value.length); }
@@ -2459,7 +2456,6 @@ function hideSuggest() {
   suggest.seq++;
   clearTimeout(suggest.timer);
   composeUi.sugestoes = [];
-  $('#suggest').hidden = true;
 }
 
 function suggestToken() {
@@ -2505,11 +2501,10 @@ function suggestUpdate() {
       }
     } catch { items = []; }
     if (seq !== suggest.seq) return; // chegou depois de o texto mudar
-    const box = $('#suggest');
     if (!items.length) { hideSuggest(); return; }
     composeUi.sugestoes = items.map((it) => ({ ...it, tok }));
-    box.hidden = false;
-    box.scrollLeft = 0;
+    flushSync();
+    $('#suggest').scrollLeft = 0;
   }, tok.kind === ':' ? 0 : 180);
 }
 
@@ -2519,19 +2514,13 @@ function suggestPick(tok, it) {
   const at = cur && cur.kind === tok.kind ? cur : tok;
   const after = t.value.slice(at.end);
   const ins = it.insert + (after.startsWith(' ') ? '' : ' ');
-  t.value = t.value.slice(0, at.start) + ins + after;
+  composeUi.texto = t.value.slice(0, at.start) + ins + after;
+  flushSync();
   const caret = at.start + it.insert.length + 1;
   t.setSelectionRange(caret, caret);
   hideSuggest();
   t.dispatchEvent(new Event('input'));
   t.focus();
-}
-
-function updateCount() {
-  const t = $('#text');
-  fitText();
-  composeUi.chars = t.value.length;
-  composeUi.max = t.maxLength;
 }
 
 const VIS = [
@@ -2550,101 +2539,39 @@ function closeVisMenu() {
 }
 
 function setCw(on) {
-  const cw = $('#cw');
-  cw.hidden = !on;
-  if (!on) cw.value = '';
   composeUi.cwOn = on;
-  if (on) cw.focus();
+  if (!on) composeUi.cw = '';
+  if (on) { flushSync(); $('#cw').focus(); }
 }
 
-// No iOS, ao abrir o teclado a janela visível encolhe e desloca; acompanhamos para o
-// cabeçalho (Cancelar/Publicar) não ficar sob a barra de status.
-// Arrastar a alça para baixo fecha o compositor (o rascunho fica guardado); tocar nela também fecha.
-// Partes reativas do compositor (o texto e o aviso de conteúdo seguem nativos)
 function mountComposicao() {
-  mount(ComposicaoExtras, { target: $('#compose-extras'), props: {
-    removerMidia: removeMedia, editarAlt: editAlt, rascunho: saveDraft,
-  } });
-  mount(ComposicaoSugestoes, { target: $('#suggest'), props: {
-    escolher: (it) => suggestPick(it.tok, it), seguro: safeUrl,
-  } });
-  mount(ComposicaoFerramentas, { target: $('#compose-tools'), props: {
-    visibilidades: VIS, idiomas: LANGS,
-    aoVisibilidade: (id) => { setVisibility(id); closeVisMenu(); $('#text').focus(); },
-    aoAviso: () => { setCw(!composeUi.cwOn); saveDraft(); },
-    aoAnexos: addMedia, aoEnquete: togglePoll, aoAgendar: scheduleSheet, aoIdioma: langSheet,
-  } });
-}
-
-function bindComposerSwipe() {
-  // com o compositor aberto, a página de trás não rola nem "estica": só o texto pode rolar
-  document.addEventListener('touchmove', (e) => {
-    if (!$('#composer').open) return;
-    const ta = e.target.closest && e.target.closest('#text');
-    if (ta && ta.scrollHeight > ta.clientHeight) return;
-    const cb = e.target.closest && e.target.closest('#compose-body');
-    if (cb && cb.scrollHeight > cb.clientHeight) return;
-    e.preventDefault();
-  }, { passive: false });
-  const dlg = $('#composer');
-  const head = $('#compose-head');
-  let y0 = null, dy = 0, moved = false, t0 = 0;
-  const reset = () => { dlg.style.transform = ''; dlg.classList.remove('dragging', 'settling'); };
-  head.addEventListener('pointerdown', (e) => {
-    y0 = e.clientY; dy = 0; moved = false; t0 = e.timeStamp;
-    head.setPointerCapture(e.pointerId);
-    dlg.classList.remove('settling');
-    dlg.classList.add('dragging');
-  });
-  head.addEventListener('pointermove', (e) => {
-    if (y0 == null) return;
-    dy = Math.max(0, e.clientY - y0);
-    if (dy > 6) moved = true;
-    dlg.style.transform = `translateY(${dy}px)`;
-  });
-  const end = (e) => {
-    if (y0 == null) return;
-    const fast = dy / Math.max(1, e.timeStamp - t0) > 0.5; // px/ms
-    y0 = null;
-    if (!moved && e.type === 'pointerup') { reset(); dlg.close(); return; } // toque simples
-    if (moved && (dy > 110 || (fast && dy > 40))) {
-      dlg.classList.remove('dragging');
-      dlg.classList.add('settling');
-      dlg.style.transform = 'translateY(100%)';
-      setTimeout(() => { dlg.close(); reset(); }, 200);
-    } else {
-      dlg.classList.remove('dragging');
-      dlg.classList.add('settling');
-      dlg.style.transform = '';
-      setTimeout(reset, 240);
-    }
-  };
-  head.addEventListener('pointerup', end);
-  head.addEventListener('pointercancel', end);
-  // acessibilidade (teclado/leitor de tela): Enter/espaço disparam click sem pointer events
-  $('#cancel-compose').addEventListener('click', (e) => { if (e.detail === 0) dlg.close(); });
-}
-
-function fitComposer() {
-  const d = $('#composer');
-  const vv = window.visualViewport;
-  if (!d.open || !vv) return;
-  d.style.top = `${vv.offsetTop}px`;
-  d.style.height = `${vv.height}px`;
-  d.classList.toggle('kb', window.innerHeight - vv.height > 120);
+  mount(Compositor, { target: $('#composer'), props: { c: {
+    aoEnviar: submitCompose, rascunho: saveDraft,
+    aoDigitar: () => { saveDraft(); suggestUpdate(); },
+    aoCursor: suggestUpdate,
+    ajustarTexto: fitText,
+    removerMidia: removeMedia, editarAlt: editAlt,
+    escolherSugestao: (it) => suggestPick(it.tok, it), seguro: safeUrl,
+    ferramentas: {
+      visibilidades: VIS, idiomas: LANGS,
+      aoVisibilidade: (id) => { setVisibility(id); closeVisMenu(); $('#text').focus(); },
+      aoAviso: () => { setCw(!composeUi.cwOn); saveDraft(); },
+      aoAnexos: addMedia, aoEnquete: togglePoll, aoAgendar: scheduleSheet, aoIdioma: langSheet,
+    },
+  } } });
+  flushSync();
 }
 
 async function submitCompose(e) {
   e.preventDefault();
-  const text = $('#text').value.trim();
+  const text = composeUi.texto.trim();
   const poll = compose.poll && { ...compose.poll, options: compose.poll.options.map((o) => o.trim()).filter(Boolean) };
   if (!text && !compose.media.length && !poll) return;
-  if (poll && poll.options.length < 2) { $('#compose-error').textContent = 'A enquete precisa de pelo menos duas opções.'; return; }
-  if (compose.media.some((m) => m.uploading)) { $('#compose-error').textContent = 'Aguarde o envio dos anexos terminar.'; return; }
-  const btn = $('#post-btn');
-  btn.disabled = true;
-  $('#compose-error').textContent = '';
-  const cw = (!$('#cw').hidden && $('#cw').value.trim()) || undefined;
+  if (poll && poll.options.length < 2) { composeUi.erro = 'A enquete precisa de pelo menos duas opções.'; return; }
+  if (compose.media.some((m) => m.uploading)) { composeUi.erro = 'Aguarde o envio dos anexos terminar.'; return; }
+  composeUi.publicando = true;
+  composeUi.erro = '';
+  const cw = (composeUi.cwOn && composeUi.cw.trim()) || undefined;
   try {
     let saved;
     if (compose.edit) {
@@ -2678,9 +2605,9 @@ async function submitCompose(e) {
     if (activeThread()) loadThread(activeThread());
     else if (!compose.edit && !compose.scheduledAt && state.tab === 'home' && !state.homeList) loadList('home');
   } catch (err) {
-    $('#compose-error').textContent = err.message;
+    composeUi.erro = err.message;
   } finally {
-    btn.disabled = false;
+    composeUi.publicando = false;
   }
 }
 
@@ -2741,7 +2668,7 @@ async function startApp() {
     const cfg = (await res.json())?.configuration || {};
     if (cfg.urls?.streaming) live.base = cfg.urls.streaming;
     limits.translation = !!cfg.translation?.enabled;
-    if (cfg.statuses?.max_characters) { limits.maxChars = cfg.statuses.max_characters; $('#text').maxLength = limits.maxChars; }
+    if (cfg.statuses?.max_characters) { limits.maxChars = cfg.statuses.max_characters; composeUi.max = limits.maxChars; }
     if (cfg.statuses?.max_media_attachments) limits.maxMedia = cfg.statuses.max_media_attachments;
     if (cfg.polls) Object.assign(limits, { pollOptions: cfg.polls.max_options || 4, pollChars: cfg.polls.max_characters_per_option || 50, pollMin: cfg.polls.min_expiration || 300, pollMax: cfg.polls.max_expiration || 2629746 });
   } catch { /* mantém os padrões */ }
@@ -2820,23 +2747,10 @@ function bindUi() {
     openProfileByAcct(art._host && !m.acct.includes('@') ? `${m.acct}@${art._host}` : m.acct);
   });
   $('#fab').addEventListener('click', () => openComposer());
-  bindComposerSwipe();
   bindDock();
-  if (window.visualViewport) {
-    window.visualViewport.addEventListener('resize', fitComposer);
-    window.visualViewport.addEventListener('scroll', fitComposer);
-  }
   $('#composer').addEventListener('close', () => { closeVisMenu(); hideSuggest(); });
-  // não deixa os botões da barra tirarem o foco do texto (o teclado não fecha)
-  $('#compose-tools').addEventListener('pointerdown', (e) => { if (!e.target.closest('input, textarea')) e.preventDefault(); });
   document.addEventListener('click', (e) => { if (!e.target.closest('.menu-wrap')) closeVisMenu(); });
-  $('#compose-form').addEventListener('submit', submitCompose);
-  $('#text').addEventListener('input', () => { updateCount(); saveDraft(); suggestUpdate(); });
-  $('#text').addEventListener('keyup', (e) => { if (e.key.startsWith('Arrow')) suggestUpdate(); });
-  $('#text').addEventListener('click', suggestUpdate);
-  $('#suggest').addEventListener('pointerdown', (e) => e.preventDefault());
   mountComposicao();
-  $('#cw').addEventListener('input', saveDraft);
 }
 
 // Recebe texto/link de outros apps: ?text=…&url=…&title=… (Android via share_target; iOS via Atalhos)

@@ -33,4 +33,4 @@
 	<Ico nome="language" tamanho={22} />{#if compose.lang}<span class="tool-badge">{compose.lang.toUpperCase()}</span>{/if}
 </button>
 <input type="file" id="media-input" accept="image/*,video/*,audio/*" multiple hidden bind:this={arquivos} onchange={(ev) => { const fs = [...ev.target.files]; ev.target.value = ''; aoAnexos(fs); }} />
-<button type="submit" class="ro-botao ro-botao--principal" id="post-btn">Publicar</button>
+<button type="submit" class="ro-botao ro-botao--principal" id="post-btn" disabled={ui.publicando}>Publicar</button>
