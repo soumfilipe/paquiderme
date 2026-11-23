@@ -10,7 +10,7 @@
     "test:e2e": "npm run build && python3 tests/e2e/rodar.py"
   },
   "devDependencies": {
-    "@sveltejs/vite-plugin-svelte": "^6.0.0",
+    "@sveltejs/vite-plugin-svelte": "^7.3.1",
     "eslint": "^9.39.5",
     "eslint-plugin-svelte": "^3.24.1",
     "globals": "^17.14.0",
