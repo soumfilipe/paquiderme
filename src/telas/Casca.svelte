@@ -3,7 +3,6 @@
 	import { gatilho } from '../casca.svelte.js';
 	import Cabecalho from './Cabecalho.svelte';
 	import Conversa from './Conversa.svelte';
-	import Legado from './Legado.svelte';
 	import BarraAbas from './BarraAbas.svelte';
 	import LinhaDoTempo from './LinhaDoTempo.svelte';
 	import Avisos from './Avisos.svelte';
@@ -48,7 +47,11 @@
 	{/key}
 {:else if topo && topo.type}
 	{#key topo.uid}
-		<Legado fn={(el) => c.entrada(el, topo)} pular={() => c.pularEntrada(topo)} />
+		{@const v = c.entrada(topo)}
+		{#if v}
+			<Cabecalho titulo={v.titulo} aoVoltar={v.aoVoltar} />
+			<v.Tela {...v.props} />
+		{/if}
 	{/key}
 {:else if perfil}
 	{#if raiz && st.settingsOpen}

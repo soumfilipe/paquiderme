@@ -6,17 +6,9 @@ import 'rochedo';
 import './style.css';
 import { estado, reiniciar } from './src/estado.svelte.js';
 import { registrar, canon, atualizar, esquecer, limpar as limparPublicacoes } from './src/publicacoes.svelte.js';
-import { ilha, montar } from './src/ilhas.js';
 import { gatilho } from './src/casca.svelte.js';
 import Casca from './src/telas/Casca.svelte';
-import LinhaDoTempo from './src/telas/LinhaDoTempo.svelte';
-import Avisos from './src/telas/Avisos.svelte';
-import BarraAbas from './src/telas/BarraAbas.svelte';
-import Cabecalho from './src/telas/Cabecalho.svelte';
-import Conversa from './src/telas/Conversa.svelte';
-import ListaContas from './src/telas/ListaContas.svelte';
-import EmAlta from './src/telas/EmAlta.svelte';
-import Resultados from './src/telas/Resultados.svelte';
+import Estado from './src/telas/Estado.svelte';
 import Publicacao from './src/telas/Publicacao.svelte';
 import { SvelteMap } from 'svelte/reactivity';
 import { compose as composeEstado, limites, ui as composeUi, reiniciarCompose } from './src/composicao.svelte.js';
@@ -117,17 +109,6 @@ const state = estado;
 reiniciar(mkState());
 
 /* Estados (Rochedo): vazio, erro com "tentar de novo", carregando */
-function emptyState(title, text) {
-  return h('div', { class: 'ro-estado' }, h('p', { class: 'ro-estado__titulo' }, title), text ? h('p', {}, text) : null);
-}
-function errorState(msg, retry) {
-  return h('div', { class: 'ro-estado ro-estado--erro', role: 'alert' },
-    h('p', { class: 'ro-estado__titulo' }, 'Não deu certo'), h('p', {}, msg),
-    h('button', { class: 'ro-botao', type: 'button', onclick: retry }, 'Tentar de novo'));
-}
-function loadingState(label = 'Carregando…') {
-  return h('div', { class: 'ro-carregando', 'aria-busy': 'true', 'aria-label': label }, h('i'), h('i'), h('i'));
-}
 /* Ação destrutiva em dois toques (Rochedo) */
 function dangerBtn(label, confirmLabel, onConfirm) {
   const b = h('button', { class: 'ro-botao ro-botao--perigo', type: 'button' }, label);
@@ -420,7 +401,7 @@ function purgeAccount(id) {
   ['home', 'local', 'global', 'tag', 'listTl'].forEach((k) => { state[k].items = state[k].items.filter(keep); });
   state.trends.statuses = state.trends.statuses.filter(keep);
   state.notifications.items = state.notifications.items.filter((n) => n.account.id !== id);
-  render();
+  redesenhar();
 }
 
 function applyRel(account, rel) {
@@ -445,7 +426,7 @@ async function accountAction(account, verb, msg) {
   try {
     const rel = await api(`/api/v1/accounts/${account.id}/${verb}`, { method: 'POST' });
     applyRel(account, rel);
-    if (verb === 'block' || verb === 'mute') purgeAccount(account.id); else render();
+    if (verb === 'block' || verb === 'mute') purgeAccount(account.id); else redesenhar();
     toast(msg);
   } catch (e) { toast(e.message); }
 }
@@ -473,7 +454,7 @@ async function followOptions(account, patch, msg) {
   try {
     const rel = await api(`/api/v1/accounts/${account.id}/follow`, { method: 'POST', body: patch });
     applyRel(account, rel);
-    render();
+    redesenhar();
     toast(msg);
   } catch (e) { toast(e.message); }
 }
@@ -658,24 +639,20 @@ const mkPublicacaoCtx = () => ({
   abrirRespondida: async (sh) => { try { openThread(await api(`/api/v1/statuses/${sh.in_reply_to_id}`)); } catch (err) { toast(err.message); } },
 });
 
-function statusEl(s, { readonly = false, host = null, focal = false } = {}) {
-  publicacaoCtx ||= mkPublicacaoCtx(); // criado no primeiro uso: alguns auxiliares são `const` definidos mais abaixo
-  return montar(Publicacao, { s, readonly, host, focal, c: publicacaoCtx });
-}
 
 const NOTIF_TABS = [['all', 'Todos'], ['mentions', 'Menções'], ['dms', 'Mensagens']];
 
 function setNotifTab(id) {
   state.notifTab = id;
   window.scrollTo(0, 0);
-  render();
+  redesenhar();
   const k = id === 'mentions' ? 'mentions' : id === 'dms' ? 'convs' : 'notifications';
   if (!state[k].items.length && !state[k].loading) loadList(k);
 }
 
 const plainText = (html) => { const d = new DOMParser().parseFromString(html || '', 'text/html').body; d.querySelectorAll('br').forEach((b) => b.replaceWith(' ')); return (d.textContent || '').replace(/\s+/g, ' ').trim(); };
 
-// Lista de publicações em Svelte: reage sozinha a carregamentos e novas publicações (sem render() global).
+// Lista de publicações em Svelte: reage sozinha a carregamentos e novas publicações (sem redesenhar() global).
 // Tudo o que as telas de lista precisam do app (publicação + contas, hashtags e abertura de telas)
 function ctxLista() {
   publicacaoCtx ||= mkPublicacaoCtx();
@@ -690,7 +667,7 @@ function openThread(status, host = null) {
     loading: false, loaded: false, error: null, returnScroll: window.scrollY,
   });
   window.scrollTo(0, 0);
-  render();
+  redesenhar();
   loadThread(topEntry());
 }
 
@@ -699,7 +676,7 @@ async function loadThread(t) {
   t.loading = true;
   t.error = null;
   busy(+1);
-  render();
+  redesenhar();
   try {
     const opts = { host: t.host, auth: !t.host };
     const [ctx, fresh] = await Promise.all([
@@ -716,7 +693,7 @@ async function loadThread(t) {
     t.loading = false;
     busy(-1);
     if (session && aberta(t)) {
-      render();
+      redesenhar();
       if (t.loaded && !t.scrolled) {
         t.scrolled = true;
         // depois de a tela reagir aos dados novos
@@ -844,7 +821,7 @@ async function refreshWithCache(kind) {
   const y0 = window.scrollY;
   const h0 = document.documentElement.scrollHeight;
   st.loading = true; st.error = null;
-  render();
+  redesenhar();
   try {
     const data = await api(spec.path, { params: { limit: 30 } });
     const have = new Set(st.items.map((s) => s.id));
@@ -865,7 +842,7 @@ async function refreshWithCache(kind) {
     st.loading = false;
     if (session && kind === 'home') setTimeout(checkHomeMarker, 300);
     if (session) {
-      render();
+      redesenhar();
       if (st.cleanSlate) { st.cleanSlate = false; window.scrollTo(0, 0); }
       else window.scrollTo(0, y0 + (document.documentElement.scrollHeight - h0)); // mantém o ponto de leitura
     }
@@ -1118,7 +1095,7 @@ function setPref(key, value) {
   store.set('prefs', prefs);
   applyPrefs();
   if (key === 'live') { if (value) liveConnect(); else liveClose(); }
-  render();
+  redesenhar();
 }
 
 /* ---------- Tempo real (streaming) ---------- */
@@ -1216,7 +1193,7 @@ function showNewPosts() {
   state.home.items = state.newPosts.concat(state.home.items);
   state.newPosts = [];
   window.scrollTo(0, 0);
-  render();
+  redesenhar();
 }
 
 /* ---------- Avisos no aparelho (Web Push) ---------- */
@@ -1252,7 +1229,7 @@ async function loadPush() {
     if (e.status !== 404) ps.error = e.message;
   } finally {
     ps.loading = false; ps.loaded = true;
-    if (session) render();
+    if (session) redesenhar();
   }
 }
 
@@ -1274,7 +1251,7 @@ async function enablePush() {
     } });
     toast('Avisos ativados');
   } catch (e) { ps.error = e.message; }
-  if (session) render();
+  if (session) redesenhar();
 }
 
 async function disablePush() {
@@ -1287,7 +1264,7 @@ async function disablePush() {
     ps.sub = null;
     toast('Avisos desativados');
   } catch (e) { ps.error = e.message; }
-  if (session) render();
+  if (session) redesenhar();
 }
 
 async function setPushAlert(key, on) {
@@ -1297,7 +1274,7 @@ async function setPushAlert(key, on) {
   try {
     ps.sub = await api('/api/v1/push/subscription', { method: 'PUT', body: { data: { alerts } } });
   } catch (e) { toast(e.message); }
-  render();
+  redesenhar();
 }
 
 /* ----- Listas ----- */
@@ -1317,7 +1294,7 @@ async function loadLists(quiet = false) {
   } finally {
     L.loading = false;
     if (!quiet) busy(-1);
-    if (session) render();
+    if (session) redesenhar();
   }
 }
 
@@ -1339,7 +1316,7 @@ async function quickHealth() {
       }
     } catch { text = `Não foi possível falar com ${session.host}.`; }
   }
-  if (text !== alarm.text) { alarm.text = text; if (session && state.tab === 'home' && !state.profiles.length) render(); }
+  if (text !== alarm.text) { alarm.text = text; if (session && state.tab === 'home' && !state.profiles.length) redesenhar(); }
 }
 function scheduleQuickHealth(ms = 1500) { clearTimeout(alarm.timer); alarm.timer = setTimeout(quickHealth, ms); }
 
@@ -1347,7 +1324,7 @@ function setHomeList(id) {
   state.homeList = id || null;
   state.listTl = mkList();
   window.scrollTo(0, 0);
-  render();
+  redesenhar();
   if (id) loadList('list');
   else if (!state.home.items.length) loadList('home');
 }
@@ -1361,22 +1338,25 @@ function pushEntry(entry) {
   state.profiles.push(entry);
   window.scrollTo(0, 0);
   const viva = topEntry(); // o proxy do estado: de agora em diante mude ESTE objeto, não o original
-  render();
+  redesenhar();
   // adiado: quem chamou ainda vai trocar sua variável pelo proxy devolvido, e o reload deve mexer nele
   if (viva.reload) queueMicrotask(() => viva.reload());
   return viva;
 }
 
-function entryView(view, e) {
-  if (e.type === 'lists') listsManageView(view, e);
-  else if (e.type === 'members') membersView(view, e);
-  else if (e.type === 'pick') listPickView(view, e);
-  else if (e.type === 'accounts') accountsEntryView(view, e);
-  else if (e.type === 'editprofile') editProfileView(view, e);
-  else if (e.type === 'filters') filtersView(view, e);
-  else if (e.type === 'scheduled') scheduledView(view, e);
-  else if (e.type === 'health') healthView(view, e);
-  else if (e.type === 'filteredit') filterEditView(view, e);
+function entradaTela(e) {
+  switch (e.type) {
+    case 'lists': return listsManageTela(e);
+    case 'members': return membersTela(e);
+    case 'pick': return listPickTela(e);
+    case 'accounts': return accountsEntryTela(e);
+    case 'editprofile': return editProfileTela(e);
+    case 'filters': return filtersTela(e);
+    case 'scheduled': return scheduledTela(e);
+    case 'health': return healthTela(e);
+    case 'filteredit': return filterEditTela(e);
+    default: return null;
+  }
 }
 
 async function createList(title) {
@@ -1385,7 +1365,7 @@ async function createList(title) {
   try {
     const l = await api('/api/v1/lists', { method: 'POST', body: { title } });
     state.lists.items.push(l);
-    render();
+    redesenhar();
   } catch (e) { toast(e.message); }
 }
 
@@ -1393,19 +1373,18 @@ function openListsManage() {
   pushEntry({ type: 'lists', editing: null, confirm: null, reload: () => loadLists() });
 }
 
-function listsManageView(view, e) {
-  view.append(profileBar('Listas', closeProfile));
-  ilha(view, Listas, {
+function listsManageTela(e) {
+  return { titulo: 'Listas', aoVoltar: closeProfile, Tela: Listas, props: {
     L: state.lists, e, aoCriar: createList, aoRecarregar: () => loadLists(),
     aoAbrir: (l) => { state.profiles = []; setHomeList(l.id); },
     aoMembros: openMembers,
-    aoEditar: (id) => { e.editing = id; render(); },
+    aoEditar: (id) => { e.editing = id; redesenhar(); },
     aoRenomear: async (l, title) => {
       try {
         const u = await api(`/api/v1/lists/${l.id}`, { method: 'PUT', body: { title } });
         l.title = u.title;
         e.editing = null;
-        render();
+        redesenhar();
       } catch (err) { toast(err.message); }
     },
     aoExcluir: async (l) => {
@@ -1413,10 +1392,10 @@ function listsManageView(view, e) {
         await api(`/api/v1/lists/${l.id}`, { method: 'DELETE' });
         state.lists.items = state.lists.items.filter((x) => x.id !== l.id);
         if (state.homeList === l.id) { state.homeList = null; state.listTl = mkList(); }
-        render();
+        redesenhar();
       } catch (err) { toast(err.message); }
     },
-  });
+  } };
 }
 
 function openAccountsEntry(title, path, undoVerb, undoLabel) {
@@ -1429,7 +1408,7 @@ async function loadAccountsEntry(e, append) {
   if (e.loading) return;
   e.loading = true; e.error = null;
   if (!append) busy(+1);
-  render();
+  redesenhar();
   try {
     let headers = null;
     const params = { limit: 40 };
@@ -1442,15 +1421,14 @@ async function loadAccountsEntry(e, append) {
   } catch (err) { e.error = err.message; } finally {
     e.loading = false;
     if (!append) busy(-1);
-    if (session && aberta(e)) render();
+    if (session && aberta(e)) redesenhar();
   }
 }
 
 function contaCtx() { return { url: safeUrl, nomeNo: nameNode, abrir: openProfile }; }
 
-function accountsEntryView(view, e) {
-  view.append(profileBar(e.title, closeProfile));
-  ilha(view, ContasEntrada, {
+function accountsEntryTela(e) {
+  return { titulo: e.title, aoVoltar: closeProfile, Tela: ContasEntrada, props: {
     e, c: contaCtx(),
     aoRecarregar: () => loadAccountsEntry(e, e.items.length > 0),
     aoMais: () => loadAccountsEntry(e, true),
@@ -1459,10 +1437,10 @@ function accountsEntryView(view, e) {
       try {
         await api(`/api/v1/accounts/${a.id}/${e.undoVerb}`, { method: 'POST' });
         e.items = e.items.filter((x) => x.id !== a.id);
-        render();
+        redesenhar();
       } catch (err) { toast(err.message); btn.disabled = false; }
     },
-  });
+  } };
 }
 
 function openMembers(list) {
@@ -1476,7 +1454,7 @@ async function loadMembers(e) {
   e.loading = true;
   e.error = null;
   busy(+1);
-  render();
+  redesenhar();
   try {
     e.items = await api(`/api/v1/lists/${e.list.id}/accounts`, { params: { limit: 0 } });
     e.loaded = true;
@@ -1485,28 +1463,27 @@ async function loadMembers(e) {
   } finally {
     e.loading = false;
     busy(-1);
-    if (session && aberta(e)) render();
+    if (session && aberta(e)) redesenhar();
   }
 }
 
-function membersView(view, e) {
-  view.append(profileBar(e.list.title, closeProfile));
-  ilha(view, Membros, {
+function membersTela(e) {
+  return { titulo: e.list.title, aoVoltar: closeProfile, Tela: Membros, props: {
     e, c: contaCtx(), aoRecarregar: () => loadMembers(e),
     aoBuscar: async (q) => {
       e.q = q;
-      if (!q) { e.results = null; render(); return; }
+      if (!q) { e.results = null; redesenhar(); return; }
       try {
         e.results = await api('/api/v1/accounts/search', { params: { q, following: 'true', limit: 10 } });
       } catch (err) { toast(err.message); return; }
-      render();
+      redesenhar();
     },
     aoAdicionar: async (a, btn) => {
       btn.disabled = true;
       try {
         await api(`/api/v1/lists/${e.list.id}/accounts`, { method: 'POST', body: { account_ids: [a.id] } });
         e.items.push(a);
-        render();
+        redesenhar();
       } catch (err) { toast(err.message); btn.disabled = false; }
     },
     aoRemover: async (a, btn) => {
@@ -1514,10 +1491,10 @@ function membersView(view, e) {
       try {
         await api(`/api/v1/lists/${e.list.id}/accounts`, { method: 'DELETE', body: { account_ids: [a.id] } });
         e.items = e.items.filter((x) => x.id !== a.id);
-        render();
+        redesenhar();
       } catch (err) { toast(err.message); btn.disabled = false; }
     },
-  });
+  } };
 }
 
 // Escolher em quais listas uma conta (que você segue) aparece
@@ -1525,7 +1502,7 @@ function openListPicker(account) {
   let e = { type: 'pick', account, member: new Set(), loaded: false, loading: false, error: null };
   e.reload = async () => {
     if (e.loading) return;
-    e.loading = true; e.error = null; busy(+1); render();
+    e.loading = true; e.error = null; busy(+1); redesenhar();
     try {
       const [mine] = await Promise.all([
         api(`/api/v1/accounts/${account.id}/lists`),
@@ -1535,25 +1512,26 @@ function openListPicker(account) {
       e.loaded = true;
     } catch (err) { e.error = err.message; } finally {
       e.loading = false; busy(-1);
-      if (session && aberta(e)) render();
+      if (session && aberta(e)) redesenhar();
     }
   };
   e = pushEntry(e);
 }
 
-function listPickView(view, e) {
-  view.append(profileBar(`Listas de @${e.account.acct}`, closeProfile));
-  ilha(view, EscolherListas, {
+function listPickTela(e) {
+  return { titulo: `Listas de @${e.account.acct}`, aoVoltar: closeProfile, Tela: EscolherListas, props: {
     e, listas: state.lists.items, aoCriar: createList, aoRecarregar: () => e.reload(),
     alternar: async (l, nela, btn) => {
       btn.disabled = true;
       try {
         await api(`/api/v1/lists/${l.id}/accounts`, { method: nela ? 'DELETE' : 'POST', body: { account_ids: [e.account.id] } });
+        e.member = new Set(e.member); // o Set dentro do estado não é reativo: troca por um novo
         if (nela) e.member.delete(l.id); else e.member.add(l.id);
-        render();
+        btn.disabled = false;
+        redesenhar();
       } catch (err) { toast(err.message); btn.disabled = false; }
     },
-  });
+  } };
 }
 
 /* ----- Filtros ----- */
@@ -1570,29 +1548,28 @@ function openFilters() {
 }
 
 async function loadFilters(e) {
-  e.loading = true; e.error = null; busy(+1); render();
+  e.loading = true; e.error = null; busy(+1); redesenhar();
   try {
     e.items = await api('/api/v2/filters');
     e.loaded = true;
   } catch (err) { e.error = err.message; } finally {
     e.loading = false; busy(-1);
-    if (session && aberta(e)) render();
+    if (session && aberta(e)) redesenhar();
   }
 }
 
-function filtersView(view, e) {
-  view.append(profileBar('Filtros', closeProfile));
-  ilha(view, Filtros, {
+function filtersTela(e) {
+  return { titulo: 'Filtros', aoVoltar: closeProfile, Tela: Filtros, props: {
     e, contexto: ctxLabel,
     aoNovo: () => openFilterEdit(e, null),
     aoEditar: (f) => openFilterEdit(e, f),
     aoExcluir: async (f) => {
       try {
         await api(`/api/v2/filters/${f.id}`, { method: 'DELETE' });
-        e.items = e.items.filter((x) => x.id !== f.id); render();
+        e.items = e.items.filter((x) => x.id !== f.id); redesenhar();
       } catch (err) { toast(err.message); }
     },
-  });
+  } };
 }
 
 /* ---------- Status da instância ---------- */
@@ -1612,7 +1589,7 @@ function openHealth() {
 
 async function runHealth(e) {
   if (e.running) return;
-  e.running = true; e.checks = null; render();
+  e.running = true; e.checks = null; redesenhar();
   const host = session.host;
   const [inst, cred, tl] = await Promise.all([
     timed(async () => { const r = await fetch(`https://${host}/api/v2/instance`, { cache: 'no-store' }); if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); }),
@@ -1640,12 +1617,11 @@ async function runHealth(e) {
   e.checks = checks;
   e.at = new Date();
   e.running = false;
-  if (session && aberta(e)) render();
+  if (session && aberta(e)) redesenhar();
 }
 
-function healthView(view, e) {
-  view.append(profileBar('Status da instância', closeProfile));
-  ilha(view, Saude, { e, host: session.host });
+function healthTela(e) {
+  return { titulo: 'Status da instância', aoVoltar: closeProfile, Tela: Saude, props: { e, host: session.host } };
 }
 
 function openScheduled() {
@@ -1656,27 +1632,26 @@ function openScheduled() {
 }
 
 async function loadScheduled(e) {
-  e.error = null; busy(+1); render();
+  e.error = null; busy(+1); redesenhar();
   try {
     e.items = await api('/api/v1/scheduled_statuses');
     e.loaded = true;
   } catch (err) { e.error = err.message; } finally {
     busy(-1);
-    if (session && aberta(e)) render();
+    if (session && aberta(e)) redesenhar();
   }
 }
 
-function scheduledView(view, e) {
-  view.append(profileBar('Publicações agendadas', closeProfile));
-  ilha(view, Agendadas, {
+function scheduledTela(e) {
+  return { titulo: 'Publicações agendadas', aoVoltar: closeProfile, Tela: Agendadas, props: {
     e,
     aoCancelar: async (it) => {
       try {
         await api(`/api/v1/scheduled_statuses/${it.id}`, { method: 'DELETE' });
-        e.items = e.items.filter((x) => x.id !== it.id); render();
+        e.items = e.items.filter((x) => x.id !== it.id); redesenhar();
       } catch (err) { toast(err.message); }
     },
-  });
+  } };
 }
 
 function openFilterEdit(parent, f) {
@@ -1692,10 +1667,8 @@ function openFilterEdit(parent, f) {
   e = pushEntry(e);
 }
 
-function filterEditView(view, e) {
-  view.append(profileBar(e.filter ? 'Editar filtro' : 'Novo filtro', closeProfile));
-  ilha(view, FiltroEdicao, { e, contextos: FILTER_CTX, duracoes: FILTER_EXP, aoSalvar: (f) => saveFilter(e, f) });
-  e.built = true;
+function filterEditTela(e) {
+  return { titulo: e.filter ? 'Editar filtro' : 'Novo filtro', aoVoltar: closeProfile, Tela: FiltroEdicao, props: { e, contextos: FILTER_CTX, duracoes: FILTER_EXP, aoSalvar: (f) => saveFilter(e, f) } };
 }
 
 // Valida e grava; lança Error(mensagem) para a tela mostrar.
@@ -1745,7 +1718,7 @@ function openEditProfile() {
 }
 
 async function loadEditProfile(e) {
-  e.loading = true; e.error = null; busy(+1); render();
+  e.loading = true; e.error = null; busy(+1); redesenhar();
   try {
     const [acct, inst] = await Promise.all([
       api('/api/v1/accounts/verify_credentials'),
@@ -1772,7 +1745,7 @@ async function loadEditProfile(e) {
   } finally {
     e.loading = false; busy(-1);
     e.built = false;
-    if (session && aberta(e)) render();
+    if (session && aberta(e)) redesenhar();
   }
 }
 
@@ -1811,12 +1784,10 @@ async function saveEditProfile(e) {
   }
 }
 
-function editProfileView(view, e) {
-  view.append(profileBar('Editar perfil', () => closeEditProfile(e)));
-  if (e.error && !e.loaded) { view.append(errorState(e.error, () => loadEditProfile(e))); return; }
-  if (!e.loaded) { view.append(loadingState('Carregando…')); return; }
-  ilha(view, PerfilEdicao, { e, preparar: prepImage, aoSalvar: () => saveEditProfile(e), aoMudar: () => { e.dirty = true; }, aviso: toast });
-  e.built = true;
+function editProfileTela(e) {
+  if (e.error && !e.loaded) return { titulo: 'Editar perfil', aoVoltar: () => closeEditProfile(e), Tela: Estado, props: { erro: e.error, aoTentar: () => loadEditProfile(e) } };
+  if (!e.loaded) return { titulo: 'Editar perfil', aoVoltar: () => closeEditProfile(e), Tela: Estado, props: { carregando: true } };
+  return { titulo: 'Editar perfil', aoVoltar: () => closeEditProfile(e), Tela: PerfilEdicao, props: { e, preparar: prepImage, aoSalvar: () => saveEditProfile(e), aoMudar: () => { e.dirty = true; }, aviso: toast } };
 }
 
 /* ----- Perfis ----- */
@@ -1864,7 +1835,7 @@ function openProfile(account) {
   p.uid = crypto.randomUUID();
   state.profiles.push(p);
   window.scrollTo(0, 0);
-  render();
+  redesenhar();
   const viva = topEntry();
   loadProfile(viva);
   ensureProfileLoaded(viva);
@@ -1898,7 +1869,7 @@ async function openProfileByAcct(acct) {
 
 function closeProfile() {
   const p = state.profiles.pop();
-  render();
+  redesenhar();
   window.scrollTo(0, (p && p.returnScroll) || 0);
 }
 
@@ -1923,7 +1894,7 @@ async function loadProfile(p) {
     p.error = e.message;
   } finally {
     busy(-1);
-    if (session) render();
+    if (session) redesenhar();
   }
 }
 
@@ -1938,7 +1909,7 @@ function setProfileSeg(p, id) {
   p.seg = id;
   p.people = null;
   window.scrollTo(0, 0);
-  render();
+  redesenhar();
   ensureProfileLoaded(p);
 }
 
@@ -1946,13 +1917,13 @@ function openPeople(p, kind) {
   p.people = kind;
   p.peopleScroll = window.scrollY;
   window.scrollTo(0, 0);
-  render();
+  redesenhar();
   ensureProfileLoaded(p);
 }
 
 function closePeople(p) {
   p.people = null;
-  render();
+  redesenhar();
   window.scrollTo(0, p.peopleScroll || 0);
 }
 
@@ -1970,7 +1941,7 @@ function followBtn(p) {
       const verb = st === 'following' || st === 'requested' ? 'unfollow' : 'follow';
       try {
         p.rel = await api(`/api/v1/accounts/${p.id}/${verb}`, { method: 'POST' });
-        render();
+        redesenhar();
       } catch (err) {
         toast(err.message);
         btn.disabled = false;
@@ -1979,10 +1950,6 @@ function followBtn(p) {
   }, label);
 }
 
-// Barra do topo (Svelte). `acoes`: [{ aria, icone, aoClicar }] à direita.
-function profileBar(title, onBack, acoes = []) {
-  return montar(Cabecalho, { titulo: title, aoVoltar: onBack, acoes });
-}
 
 function accountRowEl(s) {
   const active = session && sameAcc(s, session);
@@ -2036,7 +2003,7 @@ async function runSearch(append = false) {
   if (!s.q || s.loading) return;
   s.loading = true; s.error = null;
   if (!append) busy(+1);
-  render();
+  redesenhar();
   try {
     const params = { q: s.q, resolve: 'true', limit: s.type ? 20 : 5 };
     if (s.type) params.type = s.type;
@@ -2054,7 +2021,7 @@ async function runSearch(append = false) {
   } finally {
     s.loading = false;
     if (!append) busy(-1);
-    if (session) render();
+    if (session) redesenhar();
   }
 }
 
@@ -2064,7 +2031,7 @@ function startSearch(q) {
   s.res = null;
   s.active = !!s.q;
   window.scrollTo(0, 0);
-  if (s.q) runSearch(); else { render(); ensureExploreLoaded(); }
+  if (s.q) runSearch(); else { redesenhar(); ensureExploreLoaded(); }
   updateDock();
 }
 
@@ -2073,7 +2040,7 @@ function closeSearch() {
   s.q = ''; s.res = null; s.active = false; s.error = null;
   $('#search-input').value = '';
   window.scrollTo(0, 0);
-  render(); ensureExploreLoaded(); updateDock();
+  redesenhar(); ensureExploreLoaded(); updateDock();
 }
 
 // Barra de busca fixa na base do Explorar (ao alcance do polegar)
@@ -2107,7 +2074,7 @@ function setSeg(id) {
   state.explore.seg = id;
   store.set('seg', id);
   window.scrollTo(0, 0);
-  render();
+  redesenhar();
   ensureExploreLoaded();
 }
 
@@ -2122,33 +2089,33 @@ function openTag(name) {
 async function loadTagInfo(name) {
   try {
     const t = await api(`/api/v1/tags/${encodeURIComponent(name)}`);
-    if (state.explore.tag === name) { state.explore.tagFollowing = !!t.following; render(); }
+    if (state.explore.tag === name) { state.explore.tagFollowing = !!t.following; redesenhar(); }
   } catch { /* instância sem o recurso: some o botão */ }
 }
 
 async function toggleFollowTag(name) {
   const ex = state.explore;
   const was = ex.tagFollowing;
-  ex.tagFollowing = !was; render();
+  ex.tagFollowing = !was; redesenhar();
   try {
     await api(`/api/v1/tags/${encodeURIComponent(name)}/${was ? 'unfollow' : 'follow'}`, { method: 'POST' });
     state.followedTags.loaded = false;
     toast(was ? `Deixou de seguir #${name}` : `Seguindo #${name}`);
-  } catch (e) { ex.tagFollowing = was; render(); toast(e.message); }
+  } catch (e) { ex.tagFollowing = was; redesenhar(); toast(e.message); }
 }
 
 async function loadFollowedTags() {
   const f = state.followedTags;
   if (f.loading) return;
-  f.loading = true; f.error = null; busy(+1); render();
-  try { f.items = await api('/api/v1/followed_tags', { params: { limit: 100 } }); f.loaded = true; } catch (e) { f.error = e.message; } finally { f.loading = false; busy(-1); if (session) render(); }
+  f.loading = true; f.error = null; busy(+1); redesenhar();
+  try { f.items = await api('/api/v1/followed_tags', { params: { limit: 100 } }); f.loaded = true; } catch (e) { f.error = e.message; } finally { f.loading = false; busy(-1); if (session) redesenhar(); }
 }
 
 function closeTag() {
   state.explore.tag = null;
   state.tag = mkList();
   window.scrollTo(0, 0);
-  render();
+  redesenhar();
   ensureExploreLoaded();
 }
 
@@ -2196,8 +2163,7 @@ function cascaCtx() {
     carregarConversa: (t) => loadThread(t),
     alarme: () => alarm.text,
     instanciasSalvas: () => store.get('otherHosts', []),
-    entrada: (el, e) => entryView(el, e),
-    pularEntrada,
+    entrada: entradaTela,
     fecharPerfil: closeProfile,
     fecharGente: closePeople,
     fecharConfiguracoes: () => { state.settingsOpen = false; window.scrollTo(0, 0); },
@@ -2264,16 +2230,12 @@ function montarCasca() {
   flushSync();
 }
 
-// Telas em Svelte reagem sozinhas ao estado; render() só refaz o trecho legado (telas empilhadas ainda em JS).
-function render() {
+// Telas em Svelte reagem sozinhas ao estado. redesenhar() avisa o que não é reativo (alarme, avisos push, contas salvas)
+// e reposiciona a barra de busca e a pílula de novas publicações.
+function redesenhar() {
   flushSync(() => { gatilho.v++; });
   updateDock();
   updatePill();
-}
-
-// Não refaz o formulário de edição enquanto a pessoa digita (perderia o foco e o teclado)
-function pularEntrada(e) {
-  return (e.type === 'editprofile' || e.type === 'filteredit') && e.built && $('#view').contains(document.activeElement) && document.activeElement.matches('input, textarea');
 }
 
 function listSpec(kind) {
@@ -2312,7 +2274,7 @@ async function loadList(kind, append = false) {
   st.loading = true;
   st.error = null;
   if (!append) busy(+1);
-  render();
+  redesenhar();
   try {
     const params = { limit: 30, ...spec.extra };
     if (append) {
@@ -2339,7 +2301,7 @@ async function loadList(kind, append = false) {
   } finally {
     st.loading = false;
     if (!append) busy(-1);
-    if (session) render();
+    if (session) redesenhar();
     if (session && kind === 'home' && !append && !st.error) setTimeout(checkHomeMarker, 300);
   }
 }
@@ -2350,7 +2312,7 @@ async function loadTrends() {
   t.loading = true;
   t.error = null;
   busy(+1);
-  render();
+  redesenhar();
   try {
     const [tags, statuses, links, people, notices] = await Promise.all([
       api('/api/v1/trends/tags', { params: { limit: 20 } }),
@@ -2370,7 +2332,7 @@ async function loadTrends() {
   } finally {
     t.loading = false;
     busy(-1);
-    if (session) render();
+    if (session) redesenhar();
   }
 }
 
@@ -2408,14 +2370,14 @@ function selectTab(tab) {
   window.scrollTo(0, 0);
   const icon = document.querySelector('#tabs [aria-current="page"] svg');
   if (icon) { icon.classList.remove('bump'); void icon.getBoundingClientRect(); icon.classList.add('bump'); }
-  render();
+  redesenhar();
   if (tab === 'home') {
     if (!state.lists.loaded) loadLists(true);
     const k = state.homeList ? 'list' : 'home';
-    if (k === 'home' && hydrateFromCache('home')) { render(); window.scrollTo(0, store.get(scrollKey('home'), 0)); refreshWithCache('home'); }
+    if (k === 'home' && hydrateFromCache('home')) { redesenhar(); window.scrollTo(0, store.get(scrollKey('home'), 0)); refreshWithCache('home'); }
     else if (!getList(k).items.length && !getList(k).loading) loadList(k);
   } else if (tab === 'notifications') {
-    if (hydrateFromCache('notifications')) { render(); window.scrollTo(0, store.get(scrollKey('notifications'), 0)); refreshWithCache('notifications'); }
+    if (hydrateFromCache('notifications')) { redesenhar(); window.scrollTo(0, store.get(scrollKey('notifications'), 0)); refreshWithCache('notifications'); }
     else if (!state[tab].items.length && !state[tab].loading) loadList(tab);
   } else if (tab === 'explore') {
     ensureExploreLoaded();
@@ -2904,7 +2866,7 @@ function eachStatusList(fn) {
 function replaceStatus(u) {
   const t = activeThread();
   if (!(t && t.host)) atualizar(u); // thread de outra instância: os ids não são os nossos
-  render();
+  redesenhar();
 }
 
 function removeStatus(id) {
@@ -2919,7 +2881,7 @@ function removeStatus(id) {
   });
   const t = activeThread();
   if (t && t.status.id === id) { closeProfile(); return; }
-  render();
+  redesenhar();
 }
 
 /* ---------- App / PWA ---------- */
@@ -2954,7 +2916,7 @@ async function startApp() {
     if (cfg.statuses?.max_media_attachments) limits.maxMedia = cfg.statuses.max_media_attachments;
     if (cfg.polls) Object.assign(limits, { pollOptions: cfg.polls.max_options || 4, pollChars: cfg.polls.max_characters_per_option || 50, pollMin: cfg.polls.min_expiration || 300, pollMax: cfg.polls.max_expiration || 2629746 });
   } catch { /* mantém os padrões */ }
-  if (limits.translation && session) render();
+  if (limits.translation && session) redesenhar();
   liveConnect();
 }
 
