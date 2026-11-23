@@ -131,7 +131,7 @@ with sync_playwright() as p:
     d=POSTED[-1]; assert d["poll"]=={"options":["A","B"],"expires_in":3600,"multiple":True} and d["language"]=="en" and not d.get("media_ids"), d
     # mídia + ALT + sensível
     page.click("#fab"); page.wait_for_selector("#composer[open]")
-    page.set_input_files("#media-input",["/home/claude/paquiderme/icons/icon-192.png","/home/claude/paquiderme/icons/icon-512.png"])
+    page.set_input_files("#media-input",[os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "icons") + "/icon-192.png",os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "icons", "icon-512.png")])
     page.wait_for_function("document.querySelectorAll('.cm-item').length==2 && !document.querySelector('.cm-item.loading')")
     assert page.is_disabled("#poll-btn")
     page.click(".cm-alt >> nth=0"); page.fill(".ro-folha textarea","Pata de elefante"); page.click(".ro-folha .ro-folha__item:has-text('Salvar descrição')")

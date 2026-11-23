@@ -125,7 +125,7 @@ with sync_playwright() as p:
     # background re-render não derruba o foco
     page.focus(".edit-form textarea"); page.evaluate("window.dispatchEvent(new Event('x'))")
     page.fill(".edit-form textarea","Bio nova")
-    page.set_input_files(".edit-overlay.avatar input", "/home/claude/paquiderme/icons/icon-512.png")
+    page.set_input_files(".edit-overlay.avatar input", os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "icons") + "/icon-512.png")
     page.wait_for_function("document.querySelector('.profile-avatar').src.startsWith('blob:')")
     assert len(page.query_selector_all(".edit-save"))==1, "um só Salvar"
     page.click(".pick-row:has-text('Perfil fechado')"); page.click(".edit-pair >> nth=1 >> input >> nth=0") ; page.fill(".edit-pair >> nth=1 >> input >> nth=0","Local"); page.fill(".edit-pair >> nth=1 >> input >> nth=1","Rio")
