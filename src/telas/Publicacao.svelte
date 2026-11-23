@@ -41,6 +41,12 @@
 	const podeImpulsionar = $derived(sh.visibility === 'public' || sh.visibility === 'unlisted');
 	const respostaA = $derived(sh.in_reply_to_id && !host ? (sh.mentions || []).find((m) => m.id === sh.in_reply_to_account_id) : null);
 
+	// língua informada pela própria postagem (ISO 639-1/3); o nome completo vai no title
+	const lingua = $derived(sh.language ? String(sh.language).slice(0, 3).toUpperCase() : '');
+	const linguaNome = $derived.by(() => {
+		if (!sh.language) return '';
+		try { return new Intl.DisplayNames(['pt-BR'], { type: 'language' }).of(sh.language) || sh.language; } catch { return sh.language; }
+	});
 	const quando = $derived(c.timeAgo(sh.created_at));
 	const quandoCompleto = $derived(new Date(sh.created_at).toLocaleString('pt-BR'));
 	const dataFocal = $derived(new Date(sh.created_at).toLocaleString('pt-BR', { dateStyle: 'long', timeStyle: 'short' }));
@@ -93,6 +99,7 @@
 			</div>
 			<div class="when">
 				<time datetime={sh.created_at} title={quandoCompleto}>{quando}</time>
+				{#if lingua && !host}<span class="lang" title="Língua da postagem: {linguaNome}" aria-label="Língua da postagem: {linguaNome}">{lingua}</span>{/if}
 				{#if sh.edited_at && !host}<button type="button" class="edited" onclick={() => c.openHistory(sh)}>editado</button>{/if}
 			</div>
 		</header>
