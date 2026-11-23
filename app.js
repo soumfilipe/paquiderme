@@ -13,31 +13,21 @@ import ContasFolha from './src/telas/ContasFolha.svelte';
 import HistoricoFolha from './src/telas/HistoricoFolha.svelte';
 import Compositor from './src/telas/Compositor.svelte';
 import { ajustarJanela } from './src/composicaoGestos.js';
-import Publicacao from './src/telas/Publicacao.svelte';
 import { SvelteMap } from 'svelte/reactivity';
 import { compose as composeEstado, limites, ui as composeUi, reiniciarCompose } from './src/composicao.svelte.js';
-import ComposicaoExtras from './src/telas/ComposicaoExtras.svelte';
-import ComposicaoSugestoes from './src/telas/ComposicaoSugestoes.svelte';
-import ComposicaoFerramentas from './src/telas/ComposicaoFerramentas.svelte';
 import Saude from './src/telas/Saude.svelte';
 import Filtros from './src/telas/Filtros.svelte';
-import HashtagsSeguidas from './src/telas/HashtagsSeguidas.svelte';
-import OutraInstancia from './src/telas/OutraInstancia.svelte';
-import BuscaTipos from './src/telas/BuscaTipos.svelte';
 import FiltroEdicao from './src/telas/FiltroEdicao.svelte';
 import Agendadas from './src/telas/Agendadas.svelte';
 import ContasEntrada from './src/telas/ContasEntrada.svelte';
 import Membros from './src/telas/Membros.svelte';
 import Listas from './src/telas/Listas.svelte';
 import EscolherListas from './src/telas/EscolherListas.svelte';
-import Perfil from './src/telas/Perfil.svelte';
 import PerfilEdicao from './src/telas/PerfilEdicao.svelte';
 import AvisoAtualizacao from './src/telas/AvisoAtualizacao.svelte';
 import { iniciarAtualizacao } from './src/atualizacao.svelte.js';
 import { mount, unmount, flushSync } from 'svelte';
-import Configuracoes from './src/telas/Configuracoes.svelte';
 import { aviso } from 'rochedo/aviso.js';
-import { confirmar } from 'rochedo/confirmar.js';
 import { abrirFolha } from 'rochedo/folha.js';
 
 // anti-clickjacking: o GitHub Pages não permite cabeçalhos (frame-ancestors), então o app se recusa a rodar dentro de um iframe
@@ -114,12 +104,6 @@ reiniciar(mkState());
 
 /* Estados (Rochedo): vazio, erro com "tentar de novo", carregando */
 /* Ação destrutiva em dois toques (Rochedo) */
-function dangerBtn(label, confirmLabel, onConfirm) {
-  const b = h('button', { class: 'ro-botao ro-botao--perigo', type: 'button' }, label);
-  confirmar(b, onConfirm, { rotulo: confirmLabel });
-  return b;
-}
-
 /* ---------- Avisos ---------- */
 
 function toast(msg, opts) { return aviso(msg, opts); }
@@ -1517,7 +1501,7 @@ function scheduledTela(e) {
 }
 
 function openFilterEdit(parent, f) {
-  let e = { type: 'filteredit', parent, filter: f, built: false, saving: false, error: '',
+  pushEntry({ type: 'filteredit', parent, filter: f, built: false, saving: false, error: '',
     form: {
       title: f ? f.title : '',
       words: f ? (f.keywords || []).map((k) => k.keyword).join('\n') : '',
@@ -1525,8 +1509,7 @@ function openFilterEdit(parent, f) {
       context: new Set(f ? f.context : ['home', 'notifications', 'public', 'thread']),
       action: f && f.filter_action === 'hide' ? 'hide' : 'warn',
       exp: undefined, // undefined = manter o que já existe
-    } };
-  e = pushEntry(e);
+    } });
 }
 
 function filterEditTela(e) {
